@@ -98,22 +98,21 @@ def api_capitulos(request, serie_id):
         # Actualizar estado y dia de emision desde JKanime
         try:
             info = scraper.get_series_info_by_url(serie.url)
-            if info and info.get('estado') and info['estado'] != serie.estado:
-                serie.estado = info['estado']
-                serie.save(update_fields=['estado'])
+            if info:
+                changes = []
+                if info.get('estado') and info['estado'] != serie.estado:
+                    serie.estado = info['estado']
+                    changes.append('estado')
+
+                dia_scraped = info.get('dia_emision')
+                if dia_scraped and dia_scraped != serie.dia_emision:
+                    serie.dia_emision = dia_scraped
+                    changes.append('dia_emision')
+
+                if changes:
+                    serie.save(update_fields=changes)
         except Exception:
             pass
-
-        # Actualizar dia de emision segun el ultimo capitulo con fecha
-        ultimo_con_fecha = serie.capitulos.filter(
-            fecha_publicacion__isnull=False
-        ).order_by('-numero').first()
-        if ultimo_con_fecha and ultimo_con_fecha.fecha_publicacion:
-            dias = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']
-            dia = dias[ultimo_con_fecha.fecha_publicacion.weekday()]
-            if dia != serie.dia_emision:
-                serie.dia_emision = dia
-                serie.save(update_fields=['dia_emision'])
 
         capitulos = serie.capitulos.all().order_by('numero')
         serializer = CapituloSerializer(capitulos, many=True)

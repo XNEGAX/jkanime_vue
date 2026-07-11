@@ -1,0 +1,3 @@
+-keep class com.jkanime.tv.data.model.** { *; }
+-keep class jcifs.** { *; }
+-dontwarn jcifs.**

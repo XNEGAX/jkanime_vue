@@ -385,7 +385,8 @@ def _extract_anime_name(item):
 def get_series_info_by_url(url):
     """
     Obtiene info de una serie desde su URL directa de JKanime.
-    Retorna dict: {slug, nombre, cover_url, estado} o None si falla.
+    Retorna dict: {slug, nombre, cover_url, estado, es_pelicula, dia_emision}
+    o None si falla.
     """
     slug = _extract_slug(url)
     if not slug:
@@ -412,6 +413,7 @@ def get_series_info_by_url(url):
         cover_url = _get_cover_url(scraper, slug, full_url)
         estado = _extract_estado(soup)
         es_pelicula = _is_pelicula(soup)
+        dia_emision = _extract_dia_emision(soup)
 
         return {
             "slug": slug,
@@ -419,6 +421,7 @@ def get_series_info_by_url(url):
             "cover_url": cover_url,
             "estado": estado,
             "es_pelicula": es_pelicula,
+            "dia_emision": dia_emision,
         }
     except Exception as e:
         logger.error(f"Error obteniendo info de serie {full_url}: {e}")
@@ -470,3 +473,39 @@ def _extract_estado(soup):
     except Exception:
         pass
     return "desconocido"
+
+
+DIA_MAP = {
+    'lunes': 'lunes', 'martes': 'martes', 'miercoles': 'miercoles',
+    'miércoles': 'miercoles', 'jueves': 'jueves', 'viernes': 'viernes',
+    'sabado': 'sabado', 'sábado': 'sabado', 'domingo': 'domingo',
+}
+
+
+def _extract_dia_emision(soup):
+    """Extrae el dia de emision desde el HTML de la serie.
+
+    Prioridad:
+      1. 'Proximo episodio:' — refleja el schedule actual
+      2. 'Emitido:' en anime_data — fecha de primer emision (fallback)
+    """
+    try:
+        text = soup.get_text()
+
+        match = re.search(
+            r"Pr[oó]ximo\s*episodio:\s*([A-Za-záéíóúñ]+)",
+            text, re.IGNORECASE
+        )
+        if match:
+            raw = match.group(1).strip().lower()
+            dia = DIA_MAP.get(raw)
+            if dia:
+                return dia
+
+        match = re.search(r"Emitido:\s*([A-Za-záéíóúñ]+)", text)
+        if match:
+            raw = match.group(1).strip().lower()
+            return DIA_MAP.get(raw)
+    except Exception:
+        pass
+    return None

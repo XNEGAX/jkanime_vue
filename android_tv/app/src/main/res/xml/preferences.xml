@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+    <EditTextPreference
+        android:key="server_url"
+        android:title="Server URL"
+        android:summary="URL del backend (ej: http://192.168.100.50:8000)"
+        android:defaultValue="http://192.168.100.50:8000" />
+    <EditTextPreference
+        android:key="smb_server"
+        android:title="SMB Server"
+        android:summary="IP del servidor SMB (ej: 192.168.100.50)"
+        android:defaultValue="192.168.100.50" />
+    <EditTextPreference
+        android:key="smb_share"
+        android:title="SMB Share"
+        android:summary="Nombre del recurso compartido SMB"
+        android:defaultValue="jkanime" />
+    <EditTextPreference
+        android:key="smb_domain"
+        android:title="SMB Domain"
+        android:summary="Dominio (opcional)"
+        android:defaultValue="" />
+    <EditTextPreference
+        android:key="smb_user"
+        android:title="SMB Username"
+        android:summary="Usuario SMB"
+        android:defaultValue="guest" />
+    <EditTextPreference
+        android:key="smb_password"
+        android:title="SMB Password"
+        android:summary="Contraseña SMB"
+        android:defaultValue="" />
+</PreferenceScreen>

@@ -139,7 +139,7 @@ onMounted(async () => {
       getCapitulos(serieId),
     ])
     serie.value = serieRes.data
-    capitulos.value = capsRes.data.capitulos.map(c => ({ ...c, _downloading: false }))
+    capitulos.value = capsRes.data.capitulos.map(c => ({ ...c, _downloading: false })).sort((a, b) => b.numero - a.numero)
     totalJk.value = capsRes.data.total_jk
     nuevosEncontrados.value = capsRes.data.nuevos_encontrados
   } catch (e) {

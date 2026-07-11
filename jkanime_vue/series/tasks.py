@@ -415,40 +415,47 @@ def verificar_series_task(self):
 
         update_fields = []
 
-        # Actualizar estado desde JKanime
+        # Actualizar estado y dia_emision desde JKanime
         try:
             info = scraper.get_series_info_by_url(serie.url)
-            if info and info.get('estado') and info['estado'] != serie.estado:
-                serie.estado = info['estado']
-                update_fields.append('estado')
+            if info:
+                if info.get('estado') and info['estado'] != serie.estado:
+                    serie.estado = info['estado']
+                    update_fields.append('estado')
+
+                dia_scraped = info.get('dia_emision')
+                if dia_scraped and dia_scraped != serie.dia_emision:
+                    serie.dia_emision = dia_scraped
+                    update_fields.append('dia_emision')
         except Exception:
             pass
 
-        # Actualizar dia_emision
-        ultimo_con_fecha = serie.capitulos.filter(
-            fecha_publicacion__isnull=False
-        ).order_by('-numero').first()
+        # Fallback: si no se obtuvo dia_emision del scraper, derivarlo del ultimo capitulo
+        if 'dia_emision' not in update_fields:
+            ultimo_con_fecha = serie.capitulos.filter(
+                fecha_publicacion__isnull=False
+            ).order_by('-numero').first()
 
-        if not ultimo_con_fecha:
-            try:
-                eps_jk = scraper.get_episodes_for_series(serie.slug)
-                for ep in reversed(eps_jk):
-                    ts = ep.get('timestamp', '')
-                    if ts:
-                        parsed = parse_datetime(ts)
-                        if parsed:
-                            dia = dias[parsed.weekday()]
-                            if dia != serie.dia_emision:
-                                serie.dia_emision = dia
-                                update_fields.append('dia_emision')
-                            break
-            except Exception:
-                pass
-        else:
-            dia = dias[ultimo_con_fecha.fecha_publicacion.weekday()]
-            if dia != serie.dia_emision:
-                serie.dia_emision = dia
-                update_fields.append('dia_emision')
+            if not ultimo_con_fecha:
+                try:
+                    eps_jk = scraper.get_episodes_for_series(serie.slug)
+                    for ep in reversed(eps_jk):
+                        ts = ep.get('timestamp', '')
+                        if ts:
+                            parsed = parse_datetime(ts)
+                            if parsed:
+                                dia = dias[parsed.weekday()]
+                                if dia != serie.dia_emision:
+                                    serie.dia_emision = dia
+                                    update_fields.append('dia_emision')
+                                break
+                except Exception:
+                    pass
+            else:
+                dia = dias[ultimo_con_fecha.fecha_publicacion.weekday()]
+                if dia != serie.dia_emision:
+                    serie.dia_emision = dia
+                    update_fields.append('dia_emision')
 
         if update_fields:
             serie.save(update_fields=update_fields)

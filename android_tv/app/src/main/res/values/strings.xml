@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">JKanime TV</string>
+    <string name="error_no_series">No se encontraron series</string>
+    <string name="error_loading">Error al cargar datos</string>
+    <string name="loading">Cargando…</string>
+    <string name="settings">Configuración</string>
+    <string name="server_url">URL del servidor</string>
+    <string name="server_url_summary">Ej: http://192.168.100.50:8000</string>
+    <string name="smb_server">IP del servidor SMB</string>
+    <string name="smb_share">Nombre del recurso SMB</string>
+    <string name="smb_user">Usuario SMB</string>
+    <string name="smb_pass">Contraseña SMB</string>
+    <string name="play">Reproducir</string>
+    <string name="capitulos">Capítulos</string>
+    <string name="descargados">Descargados</string>
+    <string name="favoritos">Favoritos</string>
+    <string name="todas">Todas</string>
+</resources>
