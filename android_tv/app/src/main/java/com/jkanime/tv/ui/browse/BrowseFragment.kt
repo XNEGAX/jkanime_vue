@@ -26,6 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.Calendar
 
 class BrowseFragment : BrowseSupportFragment() {
     private val scope = CoroutineScope(Dispatchers.Main + Job())
@@ -35,8 +36,7 @@ class BrowseFragment : BrowseSupportFragment() {
         super.onViewCreated(view, savedInstanceState)
 
         title = getString(R.string.app_name)
-        headersState = HEADERS_ENABLED
-        isHeadersTransitionOnBackEnabled = true
+        headersState = HEADERS_HIDDEN
         brandColor = resources.getColor(R.color.primary)
 
         rowsAdapter = ArrayObjectAdapter(ListRowPresenter())
@@ -57,19 +57,19 @@ class BrowseFragment : BrowseSupportFragment() {
             try {
                 val app = requireContext().applicationContext as JKanimeApp
                 RetrofitClient.init(app.prefs.serverUrl)
-                val series = withContext(Dispatchers.IO) {
-                    RetrofitClient.getApi().getSeries()
-                }
                 val favoritos = withContext(Dispatchers.IO) {
                     RetrofitClient.getApi().getFavoritos()
                 }
 
                 rowsAdapter.clear()
 
-                if (favoritos.isNotEmpty()) {
-                    rowsAdapter.add(createRow(getString(R.string.favoritos), favoritos))
+                val grouped = favoritos.groupBy { it.diaEmision.lowercase() }
+                for (day in getDescendingDaysFromToday()) {
+                    val series = grouped[day]
+                    if (!series.isNullOrEmpty()) {
+                        rowsAdapter.add(createRow(day.replaceFirstChar { it.uppercase() }, series))
+                    }
                 }
-                rowsAdapter.add(createRow(getString(R.string.todas), series))
 
                 val settingsAdapter = ArrayObjectAdapter(LabelCardPresenter())
                 settingsAdapter.add(SettingsLaunch())
@@ -81,7 +81,6 @@ class BrowseFragment : BrowseSupportFragment() {
                 val settingsAdapter = ArrayObjectAdapter(LabelCardPresenter())
                 settingsAdapter.add(SettingsLaunch())
                 rowsAdapter.add(ListRow(HeaderItem(getString(R.string.settings)), settingsAdapter))
-                rowsAdapter.add(createRow(getString(R.string.error_no_series), emptyList()))
             }
         }
     }
@@ -90,6 +89,15 @@ class BrowseFragment : BrowseSupportFragment() {
         val adapter = ArrayObjectAdapter(SerieCardPresenter())
         adapter.addAll(0, series)
         return ListRow(HeaderItem(title), adapter)
+    }
+
+    companion object {
+        private val DAY_NAMES = listOf("lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo")
+
+        fun getDescendingDaysFromToday(): List<String> {
+            val todayIndex = (Calendar.getInstance().get(Calendar.DAY_OF_WEEK) - 2 + 7) % 7
+            return (0 until 7).map { i -> DAY_NAMES[(todayIndex - i + 7) % 7] }
+        }
     }
 }
 

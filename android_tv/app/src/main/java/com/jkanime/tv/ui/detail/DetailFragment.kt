@@ -1,33 +1,29 @@
 package com.jkanime.tv.ui.detail
 
-import android.graphics.drawable.Drawable
+import android.content.Intent
+import android.content.ActivityNotFoundException
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
+import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
+import android.widget.TextView
 import android.widget.Toast
-import androidx.leanback.app.DetailsSupportFragment
-import androidx.leanback.widget.AbstractDetailsDescriptionPresenter
+import androidx.fragment.app.Fragment
 import androidx.leanback.widget.ArrayObjectAdapter
-import androidx.leanback.widget.ClassPresenterSelector
-import androidx.leanback.widget.DetailsOverviewRow
-import androidx.leanback.widget.FullWidthDetailsOverviewRowPresenter
-import androidx.leanback.widget.HeaderItem
-import androidx.leanback.widget.ImageCardView
-import androidx.leanback.widget.ListRow
-import androidx.leanback.widget.ListRowPresenter
+import androidx.leanback.widget.ItemBridgeAdapter
 import androidx.leanback.widget.Presenter
+import androidx.leanback.widget.VerticalGridView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
-import com.bumptech.glide.request.target.CustomTarget
-import com.bumptech.glide.request.transition.Transition
 import com.jkanime.tv.JKanimeApp
 import com.jkanime.tv.R
+import com.jkanime.tv.data.SmbConfig
 import com.jkanime.tv.data.api.RetrofitClient
 import com.jkanime.tv.data.model.Capitulo
 import com.jkanime.tv.data.model.Serie
-import com.jkanime.tv.ui.playback.PlaybackActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -35,36 +31,33 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class DetailFragment : DetailsSupportFragment() {
+class DetailFragment : Fragment() {
     private val scope = CoroutineScope(Dispatchers.Main + Job())
     private var serieId: Int = 0
-    private lateinit var detailsAdapter: ArrayObjectAdapter
+
+    private lateinit var serieName: TextView
+    private lateinit var serieCover: ImageView
+    private lateinit var serieStatus: TextView
+    private lateinit var serieNextEpisode: TextView
+    private lateinit var chaptersGrid: VerticalGridView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         serieId = arguments?.getInt(ARG_SERIE_ID) ?: return
     }
 
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
+        return inflater.inflate(R.layout.fragment_detail, container, false)
+    }
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        val detailPresenter = FullWidthDetailsOverviewRowPresenter(DetailDescriptionPresenter()).apply {
-            backgroundColor = resources.getColor(R.color.primary)
-        }
-
-        val selector = ClassPresenterSelector().apply {
-            addClassPresenter(DetailsOverviewRow::class.java, detailPresenter)
-            addClassPresenter(ListRow::class.java, ListRowPresenter())
-        }
-
-        detailsAdapter = ArrayObjectAdapter(selector)
-        adapter = detailsAdapter
-
-        setOnItemViewClickedListener { _, item, _, _ ->
-            if (item is Capitulo && item.rutaSmb != null) {
-                startActivity(PlaybackActivity.intent(requireContext(), item))
-            }
-        }
+        serieName = view.findViewById(R.id.serie_name)
+        serieCover = view.findViewById(R.id.serie_cover)
+        serieStatus = view.findViewById(R.id.serie_status)
+        serieNextEpisode = view.findViewById(R.id.serie_next_episode)
+        chaptersGrid = view.findViewById(R.id.chapters_grid)
 
         loadDetail()
     }
@@ -77,36 +70,62 @@ class DetailFragment : DetailsSupportFragment() {
                 val serie = withContext(Dispatchers.IO) {
                     RetrofitClient.getApi().getSerieDetail(serieId)
                 }
-                val capitulos = withContext(Dispatchers.IO) {
-                    RetrofitClient.getApi().getCapitulos(serieId)
-                        .capitulos.filter { it.archivoExiste }
-                }
+                val capitulos = serie.capitulos.filter { it.rutaSmb != null }
 
-                val row = DetailsOverviewRow(serie)
-                detailsAdapter.add(row)
-
-                Glide.with(requireContext())
-                    .load(serie.portadaUrl)
-                    .diskCacheStrategy(DiskCacheStrategy.ALL)
-                    .centerCrop()
-                    .into(object : CustomTarget<Drawable>() {
-                        override fun onResourceReady(r: Drawable, t: Transition<in Drawable>?) {
-                            row.imageDrawable = r
-                        }
-                        override fun onLoadCleared(p: Drawable?) {
-                            row.imageDrawable = null
-                        }
-                    })
-
-                if (capitulos.isNotEmpty()) {
-                    val epAdapter = ArrayObjectAdapter(CapituloCardPresenter())
-                    epAdapter.addAll(0, capitulos)
-                    detailsAdapter.add(ListRow(HeaderItem(getString(R.string.capitulos)), epAdapter))
-                }
+                bindSerieInfo(serie)
+                bindChapters(capitulos)
             } catch (e: Exception) {
                 Log.e("DetailFragment", "loadDetail failed: ${e.message}", e)
                 Toast.makeText(requireContext(), "Error: ${e.message}", Toast.LENGTH_LONG).show()
             }
+        }
+    }
+
+    private fun bindSerieInfo(serie: Serie) {
+        serieName.text = serie.nombre
+
+        Glide.with(this)
+            .load(serie.portadaUrl)
+            .diskCacheStrategy(DiskCacheStrategy.ALL)
+            .centerCrop()
+            .placeholder(android.R.color.darker_gray)
+            .error(android.R.color.darker_gray)
+            .into(serieCover)
+
+        val estado = serie.estado.replace("_", " ").replaceFirstChar { it.uppercase() }
+        serieStatus.text = "Estado: $estado"
+
+        if (serie.estado != "concluido" && serie.diaEmision.isNotEmpty()) {
+            serieNextEpisode.text = "Próximo: día ${serie.diaEmision.replaceFirstChar { it.uppercase() }}"
+            serieNextEpisode.visibility = View.VISIBLE
+        } else {
+            serieNextEpisode.visibility = View.GONE
+        }
+    }
+
+    private fun bindChapters(capitulos: List<Capitulo>) {
+        val adapter = ArrayObjectAdapter(ChapterCardPresenter { openWithVlc(it) })
+        adapter.addAll(0, capitulos)
+        chaptersGrid.adapter = ItemBridgeAdapter(adapter)
+    }
+
+    private fun openWithVlc(capitulo: Capitulo) {
+        val app = requireContext().applicationContext as JKanimeApp
+        val config = app.prefs.getSmbConfig()
+        val smbUrl = buildSmbUri(config, capitulo) ?: run {
+            Toast.makeText(requireContext(), "Ruta SMB no disponible", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(Uri.parse(smbUrl), "video/*")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        try {
+            startActivity(Intent.createChooser(intent, "Abrir con..."))
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(requireContext(), "No hay reproductor disponible", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -124,38 +143,30 @@ class DetailFragment : DetailsSupportFragment() {
     }
 }
 
-private class DetailDescriptionPresenter : AbstractDetailsDescriptionPresenter() {
-    override fun onBindDescription(vh: ViewHolder, item: Any) {
-        val serie = item as Serie
-        vh.title.text = serie.nombre
-        vh.subtitle.text = serie.estado.replace("_", " ")
-        vh.body.text = "Episodios: ${serie.capitulosCount} | Descargados: ${serie.descargadosCount} | Emisión: ${serie.diaEmision}"
-    }
-}
-
-class CapituloCardPresenter : Presenter() {
+private class ChapterCardPresenter(
+    private val onChapterClick: (Capitulo) -> Unit,
+) : Presenter() {
     override fun onCreateViewHolder(parent: ViewGroup): ViewHolder {
-        val card = ImageCardView(parent.context).apply {
-            isFocusable = true
-            isFocusableInTouchMode = true
-            setMainImageDimensions(160, 90)
-        }
-        return ViewHolder(card)
+        val root = LayoutInflater.from(parent.context)
+            .inflate(R.layout.item_chapter, parent, false)
+        return ViewHolder(root)
     }
 
     override fun onBindViewHolder(viewHolder: ViewHolder, item: Any) {
         val cap = item as Capitulo
-        val card = viewHolder.view as ImageCardView
-        card.titleText = "Episodio ${cap.numero}"
-        card.contentText = cap.nombreArchivo
-        card.setMainImageScaleType(ImageView.ScaleType.CENTER_INSIDE)
-        card.setMainImage(
-            card.context.resources?.getDrawable(android.R.drawable.ic_media_play, card.context.theme)
-        )
+        val root = viewHolder.view
+        root.findViewById<TextView>(R.id.chapter_title).text = "Episodio ${cap.numero}"
+        root.findViewById<TextView>(R.id.chapter_subtitle).text = cap.nombreArchivo
+        root.setOnClickListener { onChapterClick(cap) }
     }
 
-    override fun onUnbindViewHolder(viewHolder: ViewHolder) {
-        val card = viewHolder.view as ImageCardView
-        card.setMainImage(null)
-    }
+    override fun onUnbindViewHolder(viewHolder: ViewHolder) {}
+}
+
+private fun buildSmbUri(config: SmbConfig, capitulo: Capitulo): String? {
+    val ruta = capitulo.rutaSmb ?: return null
+    val userPart = if (config.username.isNotEmpty()) {
+        "${config.username}:${config.password}@"
+    } else ""
+    return "smb://$userPart${config.serverIp}/${config.shareName}/$ruta"
 }

@@ -1,27 +1,40 @@
 """
 REST API views for jkanime_vue.
 """
-import os
+import glob
+import hashlib
+import json
 import logging
+import os
+import re
+import time
+from io import BytesIO
 from pathlib import Path
 
-from django.http import FileResponse, Http404
-from django.conf import settings
-from django.utils.dateparse import parse_datetime
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-
+import redis as _redis
+import requests
+from celery import Celery, current_app as celery_app
 from celery.result import AsyncResult
 from celery.states import SUCCESS, FAILURE
+from django.conf import settings
+from django.core.cache import cache
+from django.core.files.base import ContentFile
+from django.http import FileResponse, Http404, HttpResponseNotModified
+from django.utils.dateparse import parse_datetime
+from PIL import Image as PILImage
+from rest_framework import status
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
 
-from .models import Serie, Capitulo
 from . import scraper
-from .tasks import descargar_capitulo, descargar_todos, verificar_series_task
+from .models import Capitulo, Serie
 from .serializers import (
-    SerieListSerializer, SerieDetailSerializer,
-    CapituloSerializer, CapituloDetailSerializer,
+    CapituloDetailSerializer,
+    CapituloSerializer,
+    SerieDetailSerializer,
+    SerieListSerializer,
 )
+from .tasks import descargar_capitulo, descargar_todos, verificar_series_task
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +43,7 @@ logger = logging.getLogger(__name__)
 def api_series(request):
     """Lista todas las series, opcionalmente filtradas por busqueda."""
     search = request.query_params.get('search', '').strip()
-    series = Serie.objects.all()
+    series = Serie.objects.prefetch_related('capitulos').all()
     if search:
         series = series.filter(nombre__icontains=search)
     serializer = SerieListSerializer(series, many=True, context={'request': request})
@@ -114,7 +127,7 @@ def api_capitulos(request, serie_id):
         except Exception:
             pass
 
-        capitulos = serie.capitulos.all().order_by('numero')
+        capitulos = serie.capitulos.select_related('serie').order_by('numero')
         serializer = CapituloSerializer(capitulos, many=True)
 
         return Response({
@@ -130,8 +143,6 @@ def api_capitulos(request, serie_id):
 @api_view(['GET', 'POST'])
 def api_verificar_series(request):
     """POST: lanza tarea Celery de verificacion. GET: devuelve estado de la tarea activa."""
-    from django.core.cache import cache
-
     if request.method == 'GET':
         task_id = cache.get('verificacion_task_id')
         if not task_id:
@@ -180,8 +191,7 @@ def api_agregar_serie_url(request):
         return Response({'error': 'Se requiere una URL'}, status=status.HTTP_400_BAD_REQUEST)
 
     slug = None
-    import re as _re
-    match = _re.search(r'jkanime\.net/([^/\s]+)', url)
+    match = re.search(r'jkanime\.net/([^/\s]+)', url)
     if match:
         slug = match.group(1)
     if not slug:
@@ -209,10 +219,6 @@ def api_agregar_serie_url(request):
 
     if info.get('cover_url'):
         try:
-            import requests
-            from io import BytesIO
-            from PIL import Image as PILImage
-            from django.core.files.base import ContentFile
             resp = requests.get(info['cover_url'], timeout=30)
             if resp.status_code == 200:
                 img = PILImage.open(BytesIO(resp.content))
@@ -344,30 +350,21 @@ def api_estado_tarea(request, task_id):
 @api_view(['POST'])
 def api_cancelar_tarea(request, task_id):
     """Cancela una tarea Celery y limpia archivos residuales."""
-    from celery import Celery
-    from django.conf import settings as _settings
-    import glob as _glob
-
     try:
         result = AsyncResult(task_id)
 
-        # Revoke the task
         app = Celery('jkanime_vue')
-        app.config_from_object(_settings, namespace='CELERY')
+        app.config_from_object(settings, namespace='CELERY')
         app.control.revoke(task_id, terminate=True)
 
-        # Clean up .part files if we have the info
         meta = {}
         if result.state == 'PROGRESS':
             meta = result.info or {}
         elif result.state == 'PENDING':
-            # Try to get meta from Redis directly
-            import json as _json
-            import redis as _redis
-            r = _redis.Redis.from_url(_settings.CELERY_RESULT_BACKEND)
+            r = _redis.Redis.from_url(settings.CELERY_RESULT_BACKEND)
             raw = r.get(f'celery-task-meta-{task_id}')
             if raw:
-                stored = _json.loads(raw)
+                stored = json.loads(raw)
                 meta = stored.get('result') or {}
 
         slug = meta.get('slug', '')
@@ -375,18 +372,16 @@ def api_cancelar_tarea(request, task_id):
 
         cleaned = 0
         if slug and capitulo:
-            download_dir = Path(_settings.DOWNLOAD_DIR)
+            download_dir = Path(settings.DOWNLOAD_DIR)
             pattern = str(download_dir / slug / f"{Path(capitulo).stem}*.part")
-            for part_file in _glob.glob(pattern):
+            for part_file in glob.glob(pattern):
                 try:
                     Path(part_file).unlink()
                     cleaned += 1
                 except OSError:
                     pass
 
-        # Remove from Redis
-        import redis as _redis
-        r = _redis.Redis.from_url(_settings.CELERY_RESULT_BACKEND)
+        r = _redis.Redis.from_url(settings.CELERY_RESULT_BACKEND)
         r.delete(f'celery-task-meta-{task_id}')
 
         return Response({
@@ -402,10 +397,6 @@ def api_cancelar_tarea(request, task_id):
 @api_view(['GET'])
 def api_tareas_activas(request):
     """Devuelve tareas realmente ejecutándose, usando Celery inspect."""
-    import json as _json
-    import redis as _redis
-    from celery import current_app as celery_app
-
     try:
         real_ids = set()
         i = celery_app.control.inspect(timeout=2.0)
@@ -423,7 +414,7 @@ def api_tareas_activas(request):
             raw = r.get(f'celery-task-meta-{task_id}')
             if not raw:
                 continue
-            data = _json.loads(raw)
+            data = json.loads(raw)
             state = data.get('status', '')
             if state not in ('PENDING', 'PROGRESS'):
                 continue
@@ -452,9 +443,6 @@ def api_tareas_activas(request):
 @api_view(['GET'])
 def api_servir_video(request, capitulo_id):
     """Sirve el archivo .mp4 con headers de cache."""
-    import hashlib
-    import time
-
     try:
         capitulo = Capitulo.objects.get(id=capitulo_id)
     except Capitulo.DoesNotExist:
@@ -474,14 +462,13 @@ def api_servir_video(request, capitulo_id):
 
     if_none_match = request.META.get('HTTP_IF_NONE_MATCH', '')
     if if_none_match == etag:
-        from django.http import HttpResponseNotModified
         return HttpResponseNotModified()
 
     range_header = request.META.get('HTTP_RANGE')
     if range_header:
         byte_start = 0
         byte_end = file_size - 1
-        range_match = __import__('re').match(r'bytes=(\d+)-(\d*)', range_header)
+        range_match = re.match(r'bytes=(\d+)-(\d*)', range_header)
         if range_match:
             byte_start = int(range_match.group(1))
             if range_match.group(2):

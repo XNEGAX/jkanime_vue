@@ -18,6 +18,7 @@ USER_AGENT = (
     "Chrome/125.0.0.0 Safari/537.36"
 )
 TIMEOUT = 60
+EPISODES_PER_PAGE = 16
 
 SERVER_PRIORITY = [
     "Mp4upload", "Mediafire", "Streamtape", "VOE",
@@ -162,8 +163,7 @@ def get_episodes_for_series(slug):
                     })
 
                 total = data.get("total", 0)
-                pagination_conf = 16
-                total_pages = (total + pagination_conf - 1) // pagination_conf
+                total_pages = (total + EPISODES_PER_PAGE - 1) // EPISODES_PER_PAGE
                 if page >= total_pages:
                     break
                 page += 1

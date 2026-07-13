@@ -42,3 +42,7 @@ Thumbs.db
 jkanime_vue/descargas
 jkanime_vue/db.sqlite3
 jkanime_vue/media/portadas/
+
+# Redis
+dump.rdb
+frontend/dump.rdb

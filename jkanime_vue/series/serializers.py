@@ -6,10 +6,16 @@ from .models import Serie, Capitulo
 class CapituloSerializer(serializers.ModelSerializer):
     archivo_existe = serializers.BooleanField(read_only=True)
     nombre_archivo = serializers.CharField(read_only=True)
+    ruta_smb = serializers.SerializerMethodField()
 
     class Meta:
         model = Capitulo
-        fields = ['id', 'numero', 'nombre_archivo', 'archivo_existe', 'url_jkanime', 'fecha_publicacion']
+        fields = ['id', 'numero', 'nombre_archivo', 'archivo_existe', 'url_jkanime', 'fecha_publicacion', 'ruta_smb']
+
+    def get_ruta_smb(self, obj):
+        if not obj.ruta_archivo:
+            return None
+        return f"{obj.serie.slug}/{obj.nombre_archivo}"
 
 
 class SerieListSerializer(serializers.ModelSerializer):
@@ -34,7 +40,7 @@ class SerieListSerializer(serializers.ModelSerializer):
         return obj.capitulos.count()
 
     def get_descargados_count(self, obj):
-        return sum(1 for c in obj.capitulos.all() if c.archivo_existe)
+        return obj.capitulos.filter(ruta_archivo__isnull=False).count()
 
     def get_latest_fecha(self, obj):
         latest = obj.capitulos.filter(
@@ -65,6 +71,7 @@ class CapituloDetailSerializer(serializers.ModelSerializer):
     serie_id = serializers.IntegerField(source='serie.id', read_only=True)
     archivo_existe = serializers.BooleanField(read_only=True)
     nombre_archivo = serializers.CharField(read_only=True)
+    ruta_smb = serializers.SerializerMethodField()
     anterior_id = serializers.SerializerMethodField()
     siguiente_id = serializers.SerializerMethodField()
 
@@ -72,9 +79,14 @@ class CapituloDetailSerializer(serializers.ModelSerializer):
         model = Capitulo
         fields = [
             'id', 'numero', 'nombre_archivo', 'archivo_existe', 'fecha_publicacion',
-            'url_jkanime', 'serie_id', 'serie_nombre',
+            'url_jkanime', 'serie_id', 'serie_nombre', 'ruta_smb',
             'anterior_id', 'siguiente_id',
         ]
+
+    def get_ruta_smb(self, obj):
+        if not obj.ruta_archivo:
+            return None
+        return f"{obj.serie.slug}/{obj.nombre_archivo}"
 
     def get_anterior_id(self, obj):
         cap = Capitulo.objects.filter(serie=obj.serie, numero__lt=obj.numero).order_by('-numero').first()

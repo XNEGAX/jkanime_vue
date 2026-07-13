@@ -14,4 +14,5 @@ data class Serie(
     @SerializedName("latest_fecha") val latestFecha: String? = null,
     @SerializedName("capitulos_count") val capitulosCount: Int = 0,
     @SerializedName("descargados_count") val descargadosCount: Int = 0,
+    val capitulos: List<Capitulo> = emptyList(),
 )

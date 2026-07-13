@@ -1,5 +1,4 @@
 import os
-import re
 from django.db import models
 from django.conf import settings
 
@@ -53,8 +52,8 @@ class Capitulo(models.Model):
     serie = models.ForeignKey(Serie, on_delete=models.CASCADE, related_name='capitulos')
     numero = models.IntegerField("Número de capítulo")
     fecha_publicacion = models.DateTimeField("Fecha de publicación", null=True, blank=True)
-    ruta_archivo = models.FilePathField(
-        path=str(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'descargas')),
+    ruta_archivo = models.CharField(
+        max_length=500,
         blank=True,
         null=True,
         help_text="Ruta donde se guardo el archivo fisico del capitulo",
@@ -79,5 +78,4 @@ class Capitulo(models.Model):
 
     @property
     def nombre_archivo(self):
-        safe = re.sub(r'[<>:"/\\|?*]', '', self.serie.nombre).strip()
-        return f"{safe} - Episodio {self.numero}.mp4"
+        return f"Episodio-{self.numero}.mp4"
