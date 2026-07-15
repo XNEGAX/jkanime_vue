@@ -107,3 +107,6 @@ CELERY_TASK_ROUTES = {
     'series.tasks.descargar_capitulo': {'queue': 'descargas'},
     'series.tasks.descargar_todos': {'queue': 'descargas'},
 }
+
+# django-sage-streaming
+STREAM_MAX_LOAD_VOLUME = 8  # MB per chunk

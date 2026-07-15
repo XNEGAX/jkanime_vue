@@ -68,6 +68,10 @@ export function cancelarTarea(taskId) {
   return api.post(`/tareas/${taskId}/cancelar/`)
 }
 
+export function eliminarSerie(serieId) {
+  return api.delete(`/series/${serieId}/eliminar/`)
+}
+
 export function getVideoUrl(capituloId) {
   return `/api/video/${capituloId}/`
 }

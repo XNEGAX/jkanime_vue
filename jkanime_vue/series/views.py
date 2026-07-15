@@ -19,12 +19,14 @@ from celery.states import SUCCESS, FAILURE
 from django.conf import settings
 from django.core.cache import cache
 from django.core.files.base import ContentFile
-from django.http import FileResponse, Http404, HttpResponseNotModified
+from django.http import Http404, HttpResponseNotModified
 from django.utils.dateparse import parse_datetime
 from PIL import Image as PILImage
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+
+from sage_stream.utils.stream_services import get_streaming_response
 
 from . import scraper
 from .models import Capitulo, Serie
@@ -68,6 +70,40 @@ def api_toggle_favorito(request, serie_id):
     serie.favorito = not serie.favorito
     serie.save(update_fields=['favorito'])
     return Response({'favorito': serie.favorito})
+
+
+@api_view(['DELETE'])
+def api_eliminar_serie(request, serie_id):
+    """Elimina una serie, sus capitulos y archivos del disco."""
+    try:
+        serie = Serie.objects.prefetch_related('capitulos').get(id=serie_id)
+    except Serie.DoesNotExist:
+        return Response({'error': 'Serie no encontrada'}, status=status.HTTP_404_NOT_FOUND)
+
+    delete_errors = []
+
+    for cap in serie.capitulos.all():
+        if cap.ruta_archivo and os.path.isfile(cap.ruta_archivo):
+            try:
+                os.remove(cap.ruta_archivo)
+            except OSError as e:
+                delete_errors.append(f'Error eliminando {cap.ruta_archivo}: {e}')
+
+    if serie.portada and os.path.isfile(serie.portada.path):
+        try:
+            serie.portada.delete(save=False)
+        except OSError as e:
+            delete_errors.append(f'Error eliminando portada: {e}')
+
+    serie.delete()
+
+    if delete_errors:
+        return Response({
+            'mensaje': 'Serie eliminada con algunos errores',
+            'errores': delete_errors,
+        }, status=status.HTTP_200_OK)
+
+    return Response({'mensaje': 'Serie eliminada correctamente'})
 
 
 @api_view(['GET'])
@@ -442,7 +478,7 @@ def api_tareas_activas(request):
 
 @api_view(['GET'])
 def api_servir_video(request, capitulo_id):
-    """Sirve el archivo .mp4 con headers de cache."""
+    """Sirve el archivo .mp4 con streaming por rangos usando django-sage-streaming."""
     try:
         capitulo = Capitulo.objects.get(id=capitulo_id)
     except Capitulo.DoesNotExist:
@@ -453,43 +489,20 @@ def api_servir_video(request, capitulo_id):
 
     file_path = capitulo.ruta_archivo
     file_stat = os.stat(file_path)
-    file_size = file_stat.st_size
     last_modified = time.strftime('%a, %d %b %Y %H:%M:%S GMT', time.gmtime(file_stat.st_mtime))
 
-    # ETag basado en inode + size + mtime
-    etag_raw = f"{file_stat.st_ino}-{file_size}-{file_stat.st_mtime}"
+    etag_raw = f"{file_stat.st_ino}-{file_stat.st_size}-{file_stat.st_mtime}"
     etag = f'"{hashlib.md5(etag_raw.encode()).hexdigest()}"'
 
     if_none_match = request.META.get('HTTP_IF_NONE_MATCH', '')
     if if_none_match == etag:
         return HttpResponseNotModified()
 
-    range_header = request.META.get('HTTP_RANGE')
-    if range_header:
-        byte_start = 0
-        byte_end = file_size - 1
-        range_match = re.match(r'bytes=(\d+)-(\d*)', range_header)
-        if range_match:
-            byte_start = int(range_match.group(1))
-            if range_match.group(2):
-                byte_end = int(range_match.group(2))
+    range_re = re.compile(r'bytes\s*=\s*(\d+)\s*-\s*(\d*)', re.I)
+    range_header = request.META.get('HTTP_RANGE', '').strip()
+    max_load_volume = getattr(settings, 'STREAM_MAX_LOAD_VOLUME', 8)
 
-        content_length = byte_end - byte_start + 1
-        response = FileResponse(
-            open(file_path, 'rb'),
-            content_type='video/mp4',
-            status=206,
-        )
-        response['Content-Range'] = f'bytes {byte_start}-{byte_end}/{file_size}'
-        response['Content-Length'] = str(content_length)
-        response['Accept-Ranges'] = 'bytes'
-    else:
-        response = FileResponse(
-            open(file_path, 'rb'),
-            content_type='video/mp4',
-        )
-        response['Accept-Ranges'] = 'bytes'
-
+    response = get_streaming_response(file_path, range_header, range_re, max_load_volume)
     response['ETag'] = etag
     response['Cache-Control'] = 'public, max-age=86400'
     response['Last-Modified'] = last_modified

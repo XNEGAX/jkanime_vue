@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/server_url"
+            android:textSize="14sp"
+            android:textColor="@color/text_secondary"
+            android:layout_marginBottom="4dp" />
+
+        <EditText
+            android:id="@+id/server_url"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/search_bg"
+            android:paddingHorizontal="16dp"
+            android:hint="http://192.168.100.50:8000"
+            android:textColor="@color/on_surface"
+            android:textColorHint="@color/text_secondary"
+            android:inputType="textUri"
+            android:maxLines="1"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/smb_server"
+            android:textSize="14sp"
+            android:textColor="@color/text_secondary"
+            android:layout_marginBottom="4dp" />
+
+        <EditText
+            android:id="@+id/smb_server"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/search_bg"
+            android:paddingHorizontal="16dp"
+            android:hint="192.168.100.50"
+            android:textColor="@color/on_surface"
+            android:textColorHint="@color/text_secondary"
+            android:inputType="text"
+            android:maxLines="1"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/smb_share"
+            android:textSize="14sp"
+            android:textColor="@color/text_secondary"
+            android:layout_marginBottom="4dp" />
+
+        <EditText
+            android:id="@+id/smb_share"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/search_bg"
+            android:paddingHorizontal="16dp"
+            android:hint="jkanime"
+            android:textColor="@color/on_surface"
+            android:textColorHint="@color/text_secondary"
+            android:inputType="text"
+            android:maxLines="1"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/smb_user"
+            android:textSize="14sp"
+            android:textColor="@color/text_secondary"
+            android:layout_marginBottom="4dp" />
+
+        <EditText
+            android:id="@+id/smb_user"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/search_bg"
+            android:paddingHorizontal="16dp"
+            android:hint="guest"
+            android:textColor="@color/on_surface"
+            android:textColorHint="@color/text_secondary"
+            android:inputType="text"
+            android:maxLines="1"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/smb_pass"
+            android:textSize="14sp"
+            android:textColor="@color/text_secondary"
+            android:layout_marginBottom="4dp" />
+
+        <EditText
+            android:id="@+id/smb_pass"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/search_bg"
+            android:paddingHorizontal="16dp"
+            android:hint="contraseña"
+            android:textColor="@color/on_surface"
+            android:textColorHint="@color/text_secondary"
+            android:inputType="textPassword"
+            android:maxLines="1"
+            android:layout_marginBottom="24dp" />
+
+        <Button
+            android:id="@+id/btn_save"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="@string/save"
+            android:textAllCaps="false" />
+
+    </LinearLayout>
+</ScrollView>

@@ -1,0 +1,1 @@
+-keep class com.jkanime.phone.data.model.** { *; }

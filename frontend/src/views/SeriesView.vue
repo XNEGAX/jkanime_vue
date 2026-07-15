@@ -37,6 +37,7 @@
                 <th>Nombre</th>
                 <th style="width:100px">Estado</th>
                 <th style="width:100px">Capitulos</th>
+                <th style="width:60px"></th>
               </tr>
             </thead>
             <tbody>
@@ -75,6 +76,13 @@
                   <span class="badge-ok" v-if="serie.descargados_count">{{ serie.descargados_count }}/{{ serie.capitulos_count }}</span>
                   <span class="badge-pending" v-else>{{ serie.capitulos_count }}</span>
                 </td>
+                <td>
+                  <button
+                    class="delete-btn"
+                    @click.stop="confirmarEliminar(serie)"
+                    title="Eliminar serie"
+                  >&#128465;</button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -107,7 +115,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { getSeries, verificarSeries, getVerificarStatus } from '../api'
+import { getSeries, verificarSeries, getVerificarStatus, eliminarSerie } from '../api'
 import { useFavoritesStore } from '../stores/favorites'
 
 const router = useRouter()
@@ -124,6 +132,7 @@ const mensaje = ref('')
 const mensajeTipo = ref('ok')
 const searchQuery = ref('')
 const pagina = ref(1)
+const eliminando = ref(null)
 
 const DIA_ORDEN = ['domingo', 'sabado', 'viernes', 'jueves', 'miercoles', 'martes', 'lunes', 'sin_dia']
 const DIA_LABELS = { domingo: 'Dom', sabado: 'Sab', viernes: 'Vie', jueves: 'Jue', miercoles: 'Mie', martes: 'Mar', lunes: 'Lun', sin_dia: 'Sin dia' }
@@ -297,6 +306,24 @@ async function toggleFav(serie) {
   }
 }
 
+async function confirmarEliminar(serie) {
+  if (eliminando.value === serie.id) return
+  if (!confirm(`¿Eliminar "${serie.nombre}"?\nSe borraran todos los capitulos y archivos del disco.`)) return
+  eliminando.value = serie.id
+  try {
+    await eliminarSerie(serie.id)
+    series.value = series.value.filter(s => s.id !== serie.id)
+    favStore.setFavorito(serie.id, false)
+    mensaje.value = `"${serie.nombre}" eliminada correctamente`
+    mensajeTipo.value = 'ok'
+  } catch (e) {
+    mensaje.value = 'Error al eliminar: ' + (e.response?.data?.error || e.message)
+    mensajeTipo.value = 'error'
+  } finally {
+    eliminando.value = null
+  }
+}
+
 function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1)
 }
@@ -333,6 +360,7 @@ function capitalize(str) {
 }
 
 .serie-row { cursor: pointer; }
+.serie-row:hover .delete-btn { opacity: 1; }
 .cover-img { width: 80px; height: 60px; object-fit: cover; border-radius: 4px; }
 .cover-placeholder {
   width: 80px; height: 60px; background: #2a2a2a;
@@ -361,6 +389,24 @@ function capitalize(str) {
 
 .fav-btn.active {
   color: #e94560;
+}
+
+.delete-btn {
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  cursor: pointer;
+  color: #555;
+  padding: 4px;
+  line-height: 1;
+  opacity: 0.4;
+  transition: all 0.2s;
+}
+
+.delete-btn:hover {
+  color: #e94560;
+  opacity: 1;
+  transform: scale(1.2);
 }
 
 .estado-badge {

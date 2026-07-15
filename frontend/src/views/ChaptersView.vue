@@ -62,13 +62,13 @@
               </span>
             </td>
             <td>
-              <router-link
+              <button
                 v-if="cap.archivo_existe"
-                :to="{ name: 'player', params: { id: cap.id } }"
                 class="btn btn-success btn-sm"
+                @click="reproducir(cap.id)"
               >
                 Reproducir
-              </router-link>
+              </button>
               <button
                 v-else
                 class="btn btn-primary btn-sm"
@@ -82,6 +82,12 @@
         </tbody>
       </table>
     </template>
+
+    <VideoPlayerModal
+      v-if="playerCapituloId"
+      :capituloId="playerCapituloId"
+      @close="playerCapituloId = null"
+    />
   </div>
 </template>
 
@@ -91,6 +97,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { getSerieDetail, getCapitulos, descargarCapitulo, descargarTodos as apiDescargarTodos } from '../api'
 import { useDownloadStore } from '../stores/downloads'
 import { useFavoritesStore } from '../stores/favorites'
+import VideoPlayerModal from '../components/VideoPlayerModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -106,8 +113,13 @@ const loading = ref(true)
 const mensaje = ref('')
 const mensajeTipo = ref('ok')
 const descargandoTodos = ref(false)
+const playerCapituloId = ref(null)
 
 const isFav = computed(() => serie.value ? favStore.isFavorito(serie.value.id) : false)
+
+function reproducir(id) {
+  playerCapituloId.value = id
+}
 
 function volver() {
   if (window.history.length > 1) {
