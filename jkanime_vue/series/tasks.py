@@ -19,7 +19,7 @@ from .models import Capitulo, Serie
 
 logger = logging.getLogger(__name__)
 
-DOWNLOAD_TIMEOUT = 120
+DOWNLOAD_TIMEOUT = 1200
 CHUNK_SIZE = 65536
 PROGRESS_INTERVAL = 512 * 1024
 
@@ -67,7 +67,7 @@ def _stream_from_server(
 
         try:
             if resp.raw._fp and hasattr(resp.raw._fp, '_sock') and resp.raw._fp._sock:
-                resp.raw._fp._sock.settimeout(30)
+                resp.raw._fp._sock.settimeout(120)
         except Exception:
             pass
 
@@ -200,7 +200,7 @@ def _descargar_capitulo_core(capitulo: Capitulo, update_state) -> dict:
     return {'status': 'error', 'message': 'Todos los servidores fallaron'}
 
 
-@shared_task(bind=True, time_limit=600, soft_time_limit=540, queue='descargas')
+@shared_task(bind=True, time_limit=3600, soft_time_limit=3540, queue='descargas')
 def descargar_capitulo(self, capitulo_id: int) -> dict:
     """Descarga un capitulo individual con progreso en tiempo real."""
     try:

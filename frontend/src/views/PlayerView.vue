@@ -13,6 +13,7 @@
     <div class="player-wrapper" v-if="!videoLoading">
       <video
         ref="videoEl"
+        id="player"
         controls
         autoplay
         preload="auto"
@@ -57,9 +58,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { getCapituloDetail, getVideoUrl } from '../api'
+import Plyr from 'plyr'
+import 'plyr/dist/plyr.css'
 
 const route = useRoute()
 const capitulo = ref(null)
@@ -68,41 +71,70 @@ const videoLoading = ref(false)
 
 const videoUrl = computed(() => capitulo.value ? getVideoUrl(capitulo.value.id) : '')
 
-function keyHandler(e) {
-  if (e.target.tagName === 'INPUT') return
-  const v = videoEl.value
-  if (!v) return
-  if (e.key === ' ') { e.preventDefault(); v.paused ? v.play() : v.pause() }
-  if (e.key === 'ArrowLeft') { e.preventDefault(); v.currentTime = Math.max(0, v.currentTime - 10) }
-  if (e.key === 'ArrowRight') { e.preventDefault(); v.currentTime = Math.min(v.duration, v.currentTime + 10) }
-  if (e.key === 'f') {
-    e.preventDefault()
-    if (document.fullscreenElement) document.exitFullscreen()
-    else v.requestFullscreen()
+let player = null
+
+function initPlayer() {
+  if (player) {
+    player.destroy()
+    player = null
   }
+  if (!videoEl.value) return
+
+  player = new Plyr('#player', {
+    controls: [
+      'play-large',
+      'play',
+      'progress',
+      'current-time',
+      'duration',
+      'mute',
+      'volume',
+      'captions',
+      'settings',
+      'pip',
+      'fullscreen',
+    ],
+    settings: ['captions', 'quality', 'speed'],
+    speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] },
+    keyboard: { focused: true, global: true },
+    tooltips: { controls: true, seek: true },
+    invertTime: false,
+    toggleInvert: false,
+    resetOnEnd: true,
+    autoplay: true,
+  })
 }
 
-async function cargar(id) {
+onMounted(async () => {
   videoLoading.value = true
   try {
-    const { data } = await getCapituloDetail(id)
+    const { data } = await getCapituloDetail(route.params.id)
     capitulo.value = data
+    await nextTick()
+    initPlayer()
   } finally {
     videoLoading.value = false
   }
-}
-
-onMounted(() => {
-  document.addEventListener('keydown', keyHandler)
-  cargar(route.params.id)
 })
 
 onBeforeUnmount(() => {
-  document.removeEventListener('keydown', keyHandler)
+  if (player) {
+    player.destroy()
+    player = null
+  }
 })
 
-watch(() => route.params.id, (newId) => {
-  if (newId) cargar(newId)
+watch(() => route.params.id, async (newId) => {
+  if (!newId) return
+  videoLoading.value = true
+  try {
+    const { data } = await getCapituloDetail(newId)
+    capitulo.value = data
+    await nextTick()
+    initPlayer()
+  } finally {
+    videoLoading.value = false
+  }
 })
 </script>
 
@@ -125,12 +157,6 @@ watch(() => route.params.id, (newId) => {
   color: #888;
 }
 
-video {
-  width: 100%;
-  display: block;
-  max-height: 75vh;
-}
-
 .player-nav {
   display: flex;
   justify-content: space-between;
@@ -138,5 +164,22 @@ video {
   max-width: 1100px;
   margin: 0 auto;
   padding: 8px 0;
+}
+</style>
+
+<style>
+:root {
+  --plyr-color-main: #e94560;
+  --plyr-video-background: #000;
+  --plyr-font-family: inherit;
+  --plyr-font-size-time: 14px;
+  --plyr-font-size-menu: 14px;
+  --plyr-control-icon-size: 20px;
+  --plyr-control-spacing: 12px;
+  --plyr-video-controls-background: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,0.85));
+  --plyr-menu-color: #e0e0e0;
+  --plyr-menu-background: #1a1a2e;
+  --plyr-menu-border-color: #333;
+  --plyr-menu-arrow-color: #e0e0e0;
 }
 </style>

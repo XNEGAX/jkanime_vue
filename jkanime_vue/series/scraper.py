@@ -21,7 +21,7 @@ TIMEOUT = 60
 EPISODES_PER_PAGE = 16
 
 SERVER_PRIORITY = [
-    "Mp4upload", "Mediafire", "Streamtape", "VOE",
+    "Mediafire", "Mega", "Mp4upload", "Streamtape", "VOE",
     "Doodstream", "Filemoon", "Mixdrop", "Streamwish", "Vidhide",
 ]
 
@@ -228,6 +228,9 @@ def get_download_urls(episode_url):
                     "size": s.get("size", "Desconocido"),
                 })
 
+        priority_map = {s: i for i, s in enumerate(SERVER_PRIORITY)}
+        results.sort(key=lambda x: priority_map.get(x["server"], len(SERVER_PRIORITY)))
+
         return results
 
     except Exception as e:
@@ -238,9 +241,10 @@ def get_download_urls(episode_url):
 def resolve_video_url(scraper, server_name, remote_url):
     """Resuelve la URL directa del video según el servidor."""
     resolvers = {
+        "Mediafire": _resolve_mediafire,
+        "Mega": _resolve_mega,
         "Mp4upload": _resolve_mp4upload,
         "Streamtape": _resolve_streamtape,
-        "Mediafire": _resolve_mediafire,
         "VOE": _resolve_voe,
         "Doodstream": _resolve_doodstream,
         "Filemoon": _resolve_generic_mp4,
@@ -310,6 +314,23 @@ def _resolve_mediafire(scraper, url):
             return match.group(1)
     except Exception as e:
         logger.warning(f"Mediafire resolve falló: {e}")
+    return None
+
+
+def _resolve_mega(scraper, url):
+    try:
+        resp = scraper.get(url, timeout=TIMEOUT, allow_redirects=True)
+        resp.raise_for_status()
+        match = re.search(r'href="([^"]+)"[^>]*id="downloadButton"', resp.text)
+        if match:
+            return match.group(1)
+        match = re.search(r'https?://[^"\'\\s<>]*\.mp4[^"\'\\s<>]*', resp.text)
+        if match:
+            return match.group(0)
+        if resp.url and resp.url != url:
+            return resp.url
+    except Exception as e:
+        logger.warning(f"Mega resolve falló: {e}")
     return None
 
 

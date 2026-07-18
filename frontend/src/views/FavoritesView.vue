@@ -134,16 +134,17 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { getFavoritos, agregarSerieUrl, toggleFavorito } from '../api'
 import { useFavoritesStore } from '../stores/favorites'
 
 const router = useRouter()
+const route = useRoute()
 const favStore = useFavoritesStore()
 const series = ref([])
 const loading = ref(true)
 const searchQuery = ref('')
-const pagina = ref(1)
+const pagina = ref(parseInt(route.query.page) || 1)
 
 const showUrlModal = ref(false)
 const urlInput = ref('')
@@ -223,6 +224,10 @@ const paginasVisibles = computed(() => {
 })
 
 watch(searchQuery, () => { pagina.value = 1 })
+
+watch(pagina, (val) => {
+  router.replace({ query: { ...route.query, page: val > 1 ? val : undefined } })
+})
 
 async function cargarFavoritos() {
   loading.value = true

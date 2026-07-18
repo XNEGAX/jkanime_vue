@@ -8,4 +8,4 @@ Pillow>=10.0.0
 celery>=5.4
 redis>=5.0
 gevent>=24.0
-django-sage-streaming>=0.1
+

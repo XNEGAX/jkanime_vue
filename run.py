@@ -141,6 +141,15 @@ def main():
 
     try:
         subprocess.run(
+            [str(VENV_PYTHON), 'manage.py', 'makemigrations'],
+            cwd=str(DJANGO_DIR),
+        )
+                
+        subprocess.run(
+            [str(VENV_PYTHON), 'manage.py', 'migrate'],
+            cwd=str(DJANGO_DIR),
+        )
+        subprocess.run(
             [str(VENV_PYTHON), 'manage.py', 'runserver', '0.0.0.0:8000'],
             cwd=str(DJANGO_DIR),
         )

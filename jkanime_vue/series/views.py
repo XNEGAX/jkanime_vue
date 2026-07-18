@@ -7,7 +7,6 @@ import json
 import logging
 import os
 import re
-import time
 from io import BytesIO
 from pathlib import Path
 
@@ -19,14 +18,13 @@ from celery.states import SUCCESS, FAILURE
 from django.conf import settings
 from django.core.cache import cache
 from django.core.files.base import ContentFile
-from django.http import Http404, HttpResponseNotModified
+from django.http import FileResponse, Http404, HttpResponseNotModified
 from django.utils.dateparse import parse_datetime
+from django.utils.http import http_date
 from PIL import Image as PILImage
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-
-from sage_stream.utils.stream_services import get_streaming_response
 
 from . import scraper
 from .models import Capitulo, Serie
@@ -478,7 +476,7 @@ def api_tareas_activas(request):
 
 @api_view(['GET'])
 def api_servir_video(request, capitulo_id):
-    """Sirve el archivo .mp4 con streaming por rangos usando django-sage-streaming."""
+    """Sirve el archivo .mp4 con streaming por rangos usando FileResponse de Django."""
     try:
         capitulo = Capitulo.objects.get(id=capitulo_id)
     except Capitulo.DoesNotExist:
@@ -489,7 +487,6 @@ def api_servir_video(request, capitulo_id):
 
     file_path = capitulo.ruta_archivo
     file_stat = os.stat(file_path)
-    last_modified = time.strftime('%a, %d %b %Y %H:%M:%S GMT', time.gmtime(file_stat.st_mtime))
 
     etag_raw = f"{file_stat.st_ino}-{file_stat.st_size}-{file_stat.st_mtime}"
     etag = f'"{hashlib.md5(etag_raw.encode()).hexdigest()}"'
@@ -498,13 +495,12 @@ def api_servir_video(request, capitulo_id):
     if if_none_match == etag:
         return HttpResponseNotModified()
 
-    range_re = re.compile(r'bytes\s*=\s*(\d+)\s*-\s*(\d*)', re.I)
-    range_header = request.META.get('HTTP_RANGE', '').strip()
-    max_load_volume = getattr(settings, 'STREAM_MAX_LOAD_VOLUME', 8)
-
-    response = get_streaming_response(file_path, range_header, range_re, max_load_volume)
+    response = FileResponse(open(file_path, 'rb'), as_attachment=False)
+    response['Content-Type'] = 'video/mp4'
+    response['Content-Length'] = file_stat.st_size
+    response['Accept-Ranges'] = 'bytes'
     response['ETag'] = etag
     response['Cache-Control'] = 'public, max-age=86400'
-    response['Last-Modified'] = last_modified
+    response['Last-Modified'] = http_date(file_stat.st_mtime)
     response['Content-Disposition'] = f'inline; filename="{capitulo.nombre_archivo}"'
     return response
