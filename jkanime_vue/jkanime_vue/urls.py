@@ -10,8 +10,8 @@ urlpatterns = [
     path('api/', include('series.urls')),
 ]
 
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# Serve media files in both debug and production
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 # Serve Vue dist assets (CSS, JS, images)
 dist_dir = str(settings.BASE_DIR.parent / 'frontend' / 'dist')
