@@ -6,9 +6,9 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-lnf$r_=dr2bcff^o9n4p@8--1lj*88f+p8dac)b1p6h*i0s_48')
+SECRET_KEY = 'django-insecure-lnf$r_=dr2bcff^o9n4p@8--1lj*88f+p8dac)b1p6h*i0s_48'
 
-DEBUG = os.environ.get('DEBUG', 'False') == 'True'
+DEBUG = True
 
 ALLOWED_HOSTS = ['*']
 
@@ -27,7 +27,6 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'corsheaders.middleware.CorsMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -62,34 +61,23 @@ DATABASES = {
     }
 }
 
-# Production: use PostgreSQL if DATABASE_URL is set
-if os.environ.get('DATABASE_URL'):
-    import dj_database_url
-    DATABASES['default'] = dj_database_url.config(conn_max_age=600, ssl_require=True)
-
 LANGUAGE_CODE = 'es'
 TIME_ZONE = 'America/Santiago'
 USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = 'static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [
     BASE_DIR / 'static',
     BASE_DIR.parent / 'frontend' / 'dist',
 ]
-STORAGES = {
-    "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-    },
-}
 
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-DOWNLOAD_DIR = os.environ.get('DOWNLOAD_DIR', str(BASE_DIR / 'descargas'))
+DOWNLOAD_DIR = str(BASE_DIR / 'descargas')
 
 # CORS
 CORS_ALLOW_ALL_ORIGINS = True
@@ -103,8 +91,8 @@ REST_FRAMEWORK = {
 }
 
 # Celery
-CELERY_BROKER_URL = os.environ.get('REDIS_URL', 'redis://127.0.0.1:6379/0')
-CELERY_RESULT_BACKEND = os.environ.get('REDIS_URL', 'redis://127.0.0.1:6379/0')
+CELERY_BROKER_URL = 'redis://127.0.0.1:6379/0'
+CELERY_RESULT_BACKEND = 'redis://127.0.0.1:6379/0'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
