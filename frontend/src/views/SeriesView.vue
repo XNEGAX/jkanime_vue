@@ -132,6 +132,7 @@ const mensaje = ref('')
 const mensajeTipo = ref('ok')
 const searchQuery = ref('')
 const pagina = ref(1)
+const paginaInicializada = ref(false)
 const eliminando = ref(null)
 
 const DIA_ORDEN = ['domingo', 'sabado', 'viernes', 'jueves', 'miercoles', 'martes', 'lunes', 'sin_dia']
@@ -210,7 +211,14 @@ const paginasVisibles = computed(() => {
   return pages
 })
 
-watch(searchQuery, () => { pagina.value = 1 })
+// Sincronizar pagina a la URL para que al volver se recuerde el dia/grupo
+watch(pagina, (nuevaPagina) => {
+  if (!paginaInicializada.value) return
+  // Evitar reemplazar si ya es el mismo valor en la URL
+  const urlPagina = route.query.pagina ? parseInt(route.query.pagina, 10) : 1
+  if (urlPagina === nuevaPagina) return
+  router.replace({ query: { ...route.query, pagina: nuevaPagina } })
+})
 
 async function cargarSeries(search = '') {
   loading.value = true
@@ -276,6 +284,10 @@ function pollVerificacion(taskId) {
 
 onMounted(async () => {
   searchQuery.value = route.query.search || ''
+  if (route.query.pagina) {
+    pagina.value = parseInt(route.query.pagina, 10) || 1
+  }
+  paginaInicializada.value = true
   await cargarSeries(searchQuery.value)
 
   // Check if a verification task is already running

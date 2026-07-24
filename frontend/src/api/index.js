@@ -72,6 +72,24 @@ export function eliminarSerie(serieId) {
   return api.delete(`/series/${serieId}/eliminar/`)
 }
 
+export function refrescarPortada(serieId) {
+  return api.post(`/series/${serieId}/refrescar-portada/`)
+}
+
 export function getVideoUrl(capituloId) {
   return `/api/video/${capituloId}/`
+}
+
+export function guardarProgreso(capituloId, segundo) {
+  return api.post(`/capitulos/${capituloId}/progreso/`, { segundo })
+}
+
+export function verificarCapitulo(capituloId) {
+  return api.get(`/capitulos/${capituloId}/verificar/`, {
+    headers: { 'Cache-Control': 'no-cache' },
+  })
+}
+
+export function repararCapitulo(capituloId) {
+  return api.post(`/capitulos/${capituloId}/reparar/`)
 }

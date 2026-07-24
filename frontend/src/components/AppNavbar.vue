@@ -18,22 +18,57 @@
       </div>
     </div>
     <div class="navbar-right">
+      <button class="nav-btn" @click="showUrlModal = true" title="Agregar serie por URL">
+        + Agregar URL
+      </button>
       <button class="download-badge" v-if="store.hasActive" @click="store.toggleDrawer">
         <span class="badge-icon">&#9660;</span>
         {{ store.activeCount }} descarga{{ store.activeCount > 1 ? 's' : '' }}
       </button>
     </div>
+
+    <!-- Modal Agregar URL -->
+    <Teleport to="body">
+      <div class="modal-overlay" v-if="showUrlModal" @click.self="closeModal">
+        <div class="modal-box">
+          <h3>Agregar serie por URL</h3>
+          <p class="modal-desc">Pegá la URL de la serie (jkanime.net o latanime.org)</p>
+          <input
+            v-model="urlInput"
+            type="text"
+            class="modal-input"
+            placeholder="https://jkanime.net/shingeki-no-kyojin/ o https://latanime.org/anime/..."
+            @keydown.enter="agregarUrl"
+            ref="urlInputEl"
+            autofocus
+          />
+          <div v-if="urlError" class="modal-error">{{ urlError }}</div>
+          <div class="modal-actions">
+            <button class="btn btn-secondary btn-sm" @click="closeModal">Cancelar</button>
+            <button class="btn btn-primary btn-sm" @click="agregarUrl" :disabled="agregando || !urlInput.trim()">
+              {{ agregando ? 'Agregando...' : 'Agregar' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </nav>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDownloadStore } from '../stores/downloads'
+import { agregarSerieUrl } from '../api'
 
 const store = useDownloadStore()
 const router = useRouter()
 const searchQuery = ref('')
+const showUrlModal = ref(false)
+const urlInput = ref('')
+const urlError = ref('')
+const agregando = ref(false)
+const urlInputEl = ref(null)
 
 let debounceTimer = null
 
@@ -60,11 +95,49 @@ function setSearchValue(val) {
   searchQuery.value = val
 }
 
+watch(showUrlModal, async (val) => {
+  if (val) {
+    urlError.value = ''
+    urlInput.value = ''
+    await nextTick()
+    urlInputEl.value?.focus()
+  }
+})
+
+function closeModal() {
+  showUrlModal.value = false
+  urlError.value = ''
+  urlInput.value = ''
+}
+
+async function agregarUrl() {
+  const url = urlInput.value.trim()
+  if (!url) return
+  agregando.value = true
+  urlError.value = ''
+  try {
+    const { data } = await agregarSerieUrl(url)
+    if (data.serie_id) {
+      closeModal()
+      await router.push({ name: 'chapters', params: { id: data.serie_id } })
+    } else {
+      urlError.value = data.message || 'Error al agregar la serie'
+    }
+  } catch (e) {
+    urlError.value = e.response?.data?.error || e.message || 'Error de conexion'
+  } finally {
+    agregando.value = false
+  }
+}
+
 defineExpose({ searchQuery, setSearchValue })
 </script>
 
 <style scoped>
 .navbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
   background: #1a1a2e;
   padding: 12px 24px;
   display: flex;
@@ -135,7 +208,25 @@ defineExpose({ searchQuery, setSearchValue })
 .navbar-right {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 8px;
+}
+
+.nav-btn {
+  background: transparent;
+  color: #e94560;
+  border: 1px solid #e94560;
+  border-radius: 20px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+.nav-btn:hover {
+  background: #e94560;
+  color: #fff;
 }
 
 .download-badge {
@@ -163,5 +254,67 @@ defineExpose({ searchQuery, setSearchValue })
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.8; }
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.modal-box {
+  background: #1a1a2e;
+  border: 1px solid #333;
+  border-radius: 12px;
+  padding: 28px 32px;
+  width: 420px;
+  max-width: 90vw;
+}
+
+.modal-box h3 {
+  color: #e94560;
+  margin-bottom: 8px;
+  font-size: 1.1rem;
+}
+
+.modal-desc {
+  color: #888;
+  font-size: 0.85rem;
+  margin-bottom: 16px;
+}
+
+.modal-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #333;
+  border-radius: 8px;
+  background: #16213e;
+  color: #e0e0e0;
+  font-size: 0.85rem;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+}
+
+.modal-input:focus {
+  border-color: #e94560;
+}
+
+.modal-error {
+  color: #e94560;
+  font-size: 0.8rem;
+  margin-top: 8px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
 }
 </style>

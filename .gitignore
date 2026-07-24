@@ -39,9 +39,9 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
-jkanime_vue/descargas
-jkanime_vue/db.sqlite3
-jkanime_vue/media/portadas/
+backend/descargas
+backend/db.sqlite3
+backend/media/portadas/
 
 # Redis
 dump.rdb

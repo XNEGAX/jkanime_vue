@@ -2,10 +2,8 @@
 
 ## Stack
 - **Frontend**: Vue 3 + Vite 6 + Pinia + Vue Router 4 (`frontend/src/`)
-- **Backend**: Django 6+ / DRF (`jkanime_vue/jkanime_vue/`), app `series/`
-- **Queue**: Celery + Redis (broker) — two workers, SQLite DB
-- **Android TV**: Kotlin/Gradle subproject at `android_tv/` (app name `jkanime_tv`)
-- **Android Phone**: Kotlin/Gradle subproject at `android_phone/` (app name `jkanime_phone`, package `com.jkanime.phone`)
+- **Backend**: Django 6+ / DRF (`backend/config/`), app `series/`
+- **Queue**: threading + queue.Queue — 10 workers, estado en memoria
 
 ## Quick start
 ```
@@ -18,12 +16,10 @@ Manual: `python run.py` (requires existing venv + built frontend).
 **No lint/typecheck/test commands available** — the repo has none configured.
 
 ## Start order (from run.py)
-1. Redis (port 6379) — auto-starts `redis-server` if not running. Install: `winget install taizod1024.redis-windows-fork`
-2. Kills previous processes on port 8000 + Celery windows
-3. Celery worker `descargas` (gevent, concurrency=10, queue=descargas)
-4. Celery worker `actualizaciones` (solo, concurrency=1, queue=actualizaciones)
-5. Django `manage.py runserver 0.0.0.0:8000`
-6. Opens `http://127.0.0.1:8000`
+1. Kills previous process on port 8000
+2. Starts 10 background threading workers (descargas + verificacion)
+3. Django `manage.py runserver 0.0.0.0:8000`
+4. Opens `http://127.0.0.1:8000`
 
 ## Architecture
 - SPA: Django serves `frontend/dist/index.html` for all non-API/non-asset routes
@@ -33,11 +29,10 @@ Manual: `python run.py` (requires existing venv + built frontend).
 - Media: `/media/` in dev mode
 - CORS wide open, DRF `AllowAny`
 
-## Celery task routes
-- `series.tasks.verificar_series_task` → queue `actualizaciones`
-- `series.tasks.descargar_capitulo` / `descargar_todos` → queue `descargas`
-- Broker/backend: `redis://127.0.0.1:6379/0`
-- Debug: `celery_debug.bat` runs with `--pool=prefork --concurrency=1 --loglevel=debug`
+## Tareas en background (threading)
+- `task_runner.py` — cola FIFO con 10 workers daemon, estado en memoria (dict thread-safe)
+- `tasks.py` — core de descarga/verificacion, sin Celery
+- Progreso via `task_runner.update_task(task_id, ...)` → polling desde el frontend
 
 ## Frontend dev server (separate from Django)
 ```
@@ -47,11 +42,11 @@ npm run dev    # Vite on port 5173, proxies /api and /media to :8000
 Vite proxy is configured in `vite.config.js`. Vue Router routes: `/` (series), `/serie/:id` (chapters), `/reproducir/:id` (player), `/favoritos`.
 
 ## DB & storage
-- SQLite at `jkanime_vue/db.sqlite3`
-- `jkanime_vue/manage.py` runs from the `jkanime_vue/` subdirectory, settings module `jkanime_vue.settings`
+- SQLite at `backend/db.sqlite3`
+- `backend/manage.py` runs from the `backend/` subdirectory, settings module `config.settings`
 - Settings locale: `es`, timezone `America/Santiago`
-- Downloads stored at `jkanime_vue/descargas/<slug>/`
-- Cover art: `jkanime_vue/media/portadas/`
+- Downloads stored at `backend/descargas/<slug>/`
+- Cover art: `backend/media/portadas/`
 - Both `db.sqlite3` and `descargas/` are gitignored
 
 ## Environment quirks

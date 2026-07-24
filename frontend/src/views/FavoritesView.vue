@@ -13,9 +13,6 @@
           />
           <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''">&#10005;</button>
         </div>
-        <button class="btn btn-secondary" @click="showUrlModal = true">
-          + Agregar por URL
-        </button>
       </div>
     </div>
 
@@ -24,15 +21,15 @@
     </div>
 
     <template v-else-if="series.length">
-      <div v-if="!gruposPaginados.length" class="loading" style="color:#666;">
+      <div v-if="!seriesVisibles.length" class="loading" style="color:#666;">
         No se encontraron favoritos para "{{ searchQuery }}"
       </div>
 
       <template v-else>
-        <div v-for="grupo in gruposPaginados" :key="grupo.dia" class="dia-group">
-          <div class="dia-group-header">
-            <span class="dia-group-name">{{ grupo.dia === 'sin_dia' ? 'Sin dia definido' : capitalize(grupo.dia) }}</span>
-            <span class="dia-group-count">{{ grupo.series.length }}</span>
+        <div v-for="grupo in gruposLetras" :key="grupo.letra" class="letra-group">
+          <div class="letra-group-header">
+            <span class="letra-name">{{ grupo.letra }}</span>
+            <span class="letra-count">{{ grupo.series.length }}</span>
           </div>
           <table>
             <thead>
@@ -84,20 +81,19 @@
           </table>
         </div>
 
-        <div class="pagination" v-if="totalPaginas > 1">
-          <button class="page-btn" :disabled="pagina === 1" @click="pagina = 1">&laquo;</button>
-          <button class="page-btn" :disabled="pagina === 1" @click="pagina--">&lsaquo;</button>
-          <template v-for="p in paginasVisibles" :key="p.dia || p.num">
-            <span v-if="p.dots" class="page-dots">...</span>
-            <button
-              v-else
-              class="page-btn"
-              :class="{ active: p.num === pagina, today: p.isToday }"
-              @click="pagina = p.num"
-            >{{ p.label }}</button>
-          </template>
-          <button class="page-btn" :disabled="pagina === totalPaginas" @click="pagina++">&rsaquo;</button>
-          <button class="page-btn" :disabled="pagina === totalPaginas" @click="pagina = totalPaginas">&raquo;</button>
+        <!-- Sentinel para infinite scroll -->
+        <div
+          v-if="tieneMas"
+          ref="sentinelEl"
+          class="sentinel"
+        >
+          <span class="spinner"></span> Cargando...
+        </div>
+        <div v-else-if="seriesVisibles.length < filtradas.length" class="sentinel-done">
+          Mostrando {{ seriesVisibles.length }} de {{ filtradas.length }} favoritos
+        </div>
+        <div v-else-if="seriesVisibles.length" class="sentinel-done">
+          Mostrando todos los {{ seriesVisibles.length }} favoritos
         </div>
       </template>
     </template>
@@ -105,132 +101,91 @@
     <div v-else class="loading" style="color:#666;">
       No tienes series favoritas. Haz clic en el corazon de cualquier serie para agregarla.
     </div>
-
-    <!-- Modal Agregar por URL -->
-    <Teleport to="body">
-      <div class="modal-overlay" v-if="showUrlModal" @click.self="closeModal">
-        <div class="modal">
-          <h3>Agregar serie por URL</h3>
-          <p class="modal-desc">Pega la URL de la serie en JKanime</p>
-          <input
-            v-model="urlInput"
-            type="text"
-            class="modal-input"
-            placeholder="https://jkanime.net/nombre-de-la-serie/"
-            @keyup.enter="agregarUrl"
-          />
-          <div v-if="urlError" class="modal-error">{{ urlError }}</div>
-          <div class="modal-actions">
-            <button class="btn btn-secondary btn-sm" @click="closeModal">Cancelar</button>
-            <button class="btn btn-primary btn-sm" @click="agregarUrl" :disabled="agregando || !urlInput.trim()">
-              {{ agregando ? 'Agregando...' : 'Agregar' }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import { getFavoritos, agregarSerieUrl, toggleFavorito } from '../api'
+import { ref, computed, onMounted, watch, onBeforeUnmount, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
+import { getFavoritos } from '../api'
 import { useFavoritesStore } from '../stores/favorites'
 
+const ITEMS_POR_LOTE = 20
+
 const router = useRouter()
-const route = useRoute()
 const favStore = useFavoritesStore()
 const series = ref([])
 const loading = ref(true)
 const searchQuery = ref('')
-const pagina = ref(parseInt(route.query.page) || 1)
+const totalVisibles = ref(ITEMS_POR_LOTE)
+const sentinelEl = ref(null)
 
-const showUrlModal = ref(false)
-const urlInput = ref('')
-const urlError = ref('')
-const agregando = ref(false)
+let observer = null
 
-const DIA_ORDEN = ['domingo', 'sabado', 'viernes', 'jueves', 'miercoles', 'martes', 'lunes', 'sin_dia']
-const DIA_LABELS = { domingo: 'Dom', sabado: 'Sab', viernes: 'Vie', jueves: 'Jue', miercoles: 'Mie', martes: 'Mar', lunes: 'Lun', sin_dia: 'Sin dia' }
-
-const hoy = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'][new Date().getDay()]
-
+// Filtradas por busqueda
 const filtradas = computed(() => {
-  if (!searchQuery.value.trim()) return series.value
+  let lista = series.value
   const q = searchQuery.value.trim().toLowerCase()
-  return series.value.filter(s => s.nombre.toLowerCase().includes(q))
+  if (q) {
+    lista = lista.filter(s => s.nombre.toLowerCase().includes(q))
+  }
+  return [...lista].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
 })
 
-const todosLosGrupos = computed(() => {
+// Solo las visibles hasta ahora
+const seriesVisibles = computed(() => filtradas.value.slice(0, totalVisibles.value))
+
+// Agrupadas por primera letra
+const gruposLetras = computed(() => {
   const map = {}
-  for (const s of filtradas.value) {
-    const dia = s.dia_emision || 'sin_dia'
-    if (!map[dia]) map[dia] = []
-    map[dia].push(s)
+  for (const s of seriesVisibles.value) {
+    const letra = s.nombre.charAt(0).toUpperCase()
+    if (!map[letra]) map[letra] = []
+    map[letra].push(s)
   }
+  const letras = Object.keys(map).sort()
+  return letras.map(l => ({ letra: l, series: map[l] }))
+})
 
-  const grupos = []
-  for (const dia of DIA_ORDEN) {
-    if (map[dia] && map[dia].length) {
-      map[dia].sort((a, b) => {
-        if (!a.latest_fecha) return 1
-        if (!b.latest_fecha) return -1
-        return new Date(b.latest_fecha) - new Date(a.latest_fecha)
-      })
-      grupos.push({ dia, series: map[dia] })
+const tieneMas = computed(() => totalVisibles.value < filtradas.value.length)
+
+// --- Infinite scroll con IntersectionObserver ---
+
+function conectarObserver() {
+  desconectarObserver()
+  if (!sentinelEl.value) return
+
+  observer = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting && tieneMas.value) {
+      totalVisibles.value += ITEMS_POR_LOTE
     }
+  }, { rootMargin: '200px' })
+
+  observer.observe(sentinelEl.value)
+}
+
+function desconectarObserver() {
+  if (observer) {
+    observer.disconnect()
+    observer = null
   }
-  return grupos
-})
+}
 
-const gruposRotados = computed(() => {
-  const grupos = todosLosGrupos.value
-  if (!grupos.length) return []
-
-  const idxHoy = grupos.findIndex(g => g.dia === hoy)
-  if (idxHoy <= 0) return grupos
-
-  return [...grupos.slice(idxHoy), ...grupos.slice(0, idxHoy)]
-})
-
-const totalPaginas = computed(() => gruposRotados.value.length)
-
-const gruposPaginados = computed(() => {
-  if (!gruposRotados.value.length) return []
-  return [gruposRotados.value[pagina.value - 1]]
-})
-
-const paginasVisibles = computed(() => {
-  const total = totalPaginas.value
-  const actual = pagina.value
-  if (total <= 7) {
-    return gruposRotados.value.map((g, i) => ({
-      num: i + 1,
-      label: DIA_LABELS[g.dia] || g.dia,
-      isToday: g.dia === hoy,
-    }))
+// Reconectar cuando cambien las visibles o el filtro
+watch([seriesVisibles, tieneMas], async () => {
+  await nextTick()
+  if (tieneMas.value) {
+    conectarObserver()
+  } else {
+    desconectarObserver()
   }
+}, { flush: 'post' })
 
-  const pages = []
-  pages.push({ num: 1, label: DIA_LABELS[gruposRotados.value[0].dia], isToday: gruposRotados.value[0].dia === hoy })
-  if (actual > 3) pages.push({ dots: true })
-  for (let i = Math.max(2, actual - 1); i <= Math.min(total - 1, actual + 1); i++) {
-    pages.push({ num: i, label: DIA_LABELS[gruposRotados.value[i - 1].dia], isToday: gruposRotados.value[i - 1].dia === hoy })
-  }
-  if (actual < total - 2) pages.push({ dots: true })
-  pages.push({ num: total, label: DIA_LABELS[gruposRotados.value[total - 1].dia], isToday: gruposRotados.value[total - 1].dia === hoy })
-  return pages
-})
-
-watch(searchQuery, () => { pagina.value = 1 })
-
-watch(pagina, (val) => {
-  router.replace({ query: { ...route.query, page: val > 1 ? val : undefined } })
-})
+// --- Datos ---
 
 async function cargarFavoritos() {
   loading.value = true
+  totalVisibles.value = ITEMS_POR_LOTE
   try {
     const { data } = await getFavoritos()
     series.value = data
@@ -244,6 +199,12 @@ async function cargarFavoritos() {
 
 onMounted(cargarFavoritos)
 
+onBeforeUnmount(() => {
+  desconectarObserver()
+})
+
+// --- Acciones ---
+
 async function quitarFavorito(serie) {
   const result = await favStore.toggle(serie.id)
   if (result === false) {
@@ -251,39 +212,10 @@ async function quitarFavorito(serie) {
   }
 }
 
-function capitalize(str) {
-  return str.charAt(0).toUpperCase() + str.slice(1)
-}
-
-function closeModal() {
-  showUrlModal.value = false
-  urlInput.value = ''
-  urlError.value = ''
-}
-
-async function agregarUrl() {
-  const url = urlInput.value.trim()
-  if (!url) return
-
-  agregando.value = true
-  urlError.value = ''
-  try {
-    const { data } = await agregarSerieUrl(url)
-    const { data: favData } = await toggleFavorito(data.serie_id)
-    if (!favData.favorito) {
-      await toggleFavorito(data.serie_id)
-    }
-    if (data.existing) {
-      cargarFavoritos()
-    } else {
-      router.push({ name: 'chapters', params: { id: data.serie_id } })
-    }
-  } catch (e) {
-    urlError.value = e.response?.data?.error || e.message
-  } finally {
-    agregando.value = false
-  }
-}
+// Reset al buscar
+watch(searchQuery, () => {
+  totalVisibles.value = ITEMS_POR_LOTE
+})
 </script>
 
 <style scoped>
@@ -343,11 +275,13 @@ async function agregarUrl() {
   color: #e94560;
 }
 
-.dia-group {
+/* --- Grupo por letra --- */
+
+.letra-group {
   margin-bottom: 28px;
 }
 
-.dia-group-header {
+.letra-group-header {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -356,14 +290,13 @@ async function agregarUrl() {
   border-bottom: 2px solid #e94560;
 }
 
-.dia-group-name {
-  font-size: 1.1rem;
+.letra-name {
+  font-size: 1.3rem;
   font-weight: 700;
   color: #e94560;
-  text-transform: capitalize;
 }
 
-.dia-group-count {
+.letra-count {
   background: #1a1a2e;
   color: #888;
   padding: 2px 10px;
@@ -371,6 +304,8 @@ async function agregarUrl() {
   font-size: 0.75rem;
   font-weight: 600;
 }
+
+/* --- Tabla --- */
 
 .serie-row { cursor: pointer; }
 .cover-img { width: 80px; height: 60px; object-fit: cover; border-radius: 4px; }
@@ -419,116 +354,22 @@ async function agregarUrl() {
   color: #888;
 }
 
-.pagination {
+/* --- Infinite scroll --- */
+
+.sentinel {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  margin-top: 24px;
-  padding: 12px 0;
-}
-
-.page-btn {
-  background: #1a1a2e;
-  color: #888;
-  border: 1px solid #333;
-  border-radius: 6px;
-  padding: 6px 10px;
-  cursor: pointer;
-  font-size: 0.8rem;
-  font-weight: 600;
-  transition: all 0.2s;
-}
-
-.page-btn:hover:not(:disabled) {
-  color: #e94560;
-  border-color: #e94560;
-}
-
-.page-btn.active {
-  background: #e94560;
-  color: white;
-  border-color: #e94560;
-}
-
-.page-btn.today:not(.active) {
-  border-color: #e94560;
-  color: #e94560;
-}
-
-.page-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-.page-dots {
-  color: #555;
-  padding: 0 4px;
-  font-size: 0.8rem;
-}
-
-.page-info {
-  color: #555;
-  font-size: 0.75rem;
-  margin-left: 12px;
-}
-
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2000;
-}
-
-.modal {
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-radius: 12px;
-  padding: 24px;
-  width: 420px;
-  max-width: 90vw;
-}
-
-.modal h3 {
-  margin: 0 0 4px;
-  color: #e94560;
-}
-
-.modal-desc {
+  gap: 8px;
+  padding: 24px 0;
   color: #888;
   font-size: 0.85rem;
-  margin: 0 0 16px;
 }
 
-.modal-input {
-  width: 100%;
-  padding: 10px 12px;
-  background: #222;
-  border: 1px solid #444;
-  border-radius: 6px;
-  color: #eee;
-  font-size: 0.9rem;
-  outline: none;
-  box-sizing: border-box;
-}
-
-.modal-input:focus {
-  border-color: #e94560;
-}
-
-.modal-error {
-  color: #e94560;
+.sentinel-done {
+  text-align: center;
+  padding: 16px 0;
+  color: #555;
   font-size: 0.8rem;
-  margin-top: 8px;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 16px;
 }
 </style>

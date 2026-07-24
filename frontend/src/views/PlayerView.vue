@@ -94,8 +94,8 @@ function initPlayer() {
       'pip',
       'fullscreen',
     ],
-    settings: ['captions', 'quality', 'speed'],
-    speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] },
+    settings: ['captions', 'speed'],
+    speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3, 4] },
     keyboard: { focused: true, global: true },
     tooltips: { controls: true, seek: true },
     invertTime: false,
@@ -103,6 +103,14 @@ function initPlayer() {
     resetOnEnd: true,
     autoplay: true,
   })
+
+  // Forzar preload y pedir mas buffer
+  const vid = videoEl.value
+  if (vid) {
+    vid.preload = 'auto'
+    // El nativo del browser limita el buffer, pero forzamos preload
+    vid.setAttribute('preload', 'auto')
+  }
 }
 
 onMounted(async () => {
