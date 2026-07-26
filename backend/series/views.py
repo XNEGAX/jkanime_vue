@@ -54,8 +54,11 @@ def api_series(request):
 
 @api_view(['GET'])
 def api_series_favoritos(request):
-    """Lista solo las series marcadas como favoritas."""
+    """Lista series favoritas, opcionalmente filtradas por estado."""
     series = Serie.objects.filter(favorito=True)
+    estado = request.query_params.get('estado', '').strip()
+    if estado:
+        series = series.filter(estado=estado)
     serializer = SerieListSerializer(series, many=True, context={'request': request})
     return Response(serializer.data)
 
@@ -621,3 +624,115 @@ def api_reparar_capitulo(request, capitulo_id):
         'capitulo_id': capitulo.id,
         'numero': capitulo.numero,
     })
+
+
+# ===========================================================================
+#  Ultimos episodios (trending)
+# ===========================================================================
+
+
+@api_view(['GET'])
+def api_ultimos_episodios(request):
+    """Devuelve los ultimos episodios en tendencia de JKanime.
+
+    Enriquece los datos del scraping:
+    - Si la serie no existe en BD, la crea (con portada del CDN).
+    - Reemplaza la imagen por la portada local si ya existia.
+    - Crea el capitulo en BD si no existe.
+    """
+    try:
+        s = get_scraper("jkanime")
+        trending = s.get_trending()
+
+        # Precargar series de jkanime existentes en BD (slug -> serie)
+        series_bd = {
+            serie.slug: serie
+            for serie in Serie.objects.filter(fuente="jkanime").prefetch_related("capitulos")
+        }
+
+        for ep in trending:
+            url = ep.get("url", "")
+            parts = url.rstrip("/").split("/")
+            slug = parts[3] if len(parts) >= 4 else ""
+
+            serie = series_bd.get(slug)
+            if not serie and slug:
+                # --- Crear serie nueva (patron de _run_verificar) ---
+                serie_url = f"{s.BASE_URL}/{slug}/"
+                serie = Serie(
+                    nombre=ep.get("nombre", slug.replace("-", " ").title()),
+                    url=serie_url,
+                    slug=slug,
+                    fuente="jkanime",
+                )
+                # Intentar portada del CDN
+                cdn_url = f"https://cdn.jkdesa.com/assets/images/animes/image/{slug}.jpg"
+                portada_ok = False
+                try:
+                    resp = requests.get(cdn_url, timeout=15)
+                    if resp.status_code == 200:
+                        img = PILImage.open(BytesIO(resp.content))
+                        buf = BytesIO()
+                        img.save(buf, format="JPEG")
+                        safe_name = slug[:50]
+                        serie.portada.save(
+                            f"{safe_name}.jpg", ContentFile(buf.getvalue()), save=False
+                        )
+                        portada_ok = True
+                except Exception as e:
+                    logger.warning(f"Error descargando portada CDN para {slug}: {e}")
+                # Fallback: portada del scraping
+                if not portada_ok and ep.get("imagen"):
+                    try:
+                        resp = requests.get(ep["imagen"], timeout=15)
+                        if resp.status_code == 200:
+                            img = PILImage.open(BytesIO(resp.content))
+                            buf = BytesIO()
+                            img.save(buf, format="JPEG")
+                            safe_name = slug[:50]
+                            serie.portada.save(
+                                f"{safe_name}.jpg", ContentFile(buf.getvalue()), save=False
+                            )
+                    except Exception as e:
+                        logger.warning(f"Error descargando portada scraping para {slug}: {e}")
+                serie.save()
+                series_bd[slug] = serie
+
+            if serie:
+                # Reemplazar imagen scraping por portada local
+                if serie.portada:
+                    ep["imagen"] = serie.portada.url
+                ep["serie_id"] = serie.id
+
+                # Validar si el episodio existe en BD, si no -> crearlo
+                ep_num_str = ep.get("episodio", "")
+                capitulo = None
+                if ep_num_str:
+                    try:
+                        ep_num = int(ep_num_str)
+                    except (ValueError, TypeError):
+                        ep_num = None
+                    if ep_num is not None:
+                        capitulo = serie.capitulos.filter(numero=ep_num).first()
+                        if not capitulo:
+                            capitulo = Capitulo.objects.create(
+                                serie=serie,
+                                numero=ep_num,
+                                url_fuente=url,
+                            )
+                ep["capitulo_id"] = capitulo.id if capitulo else None
+                ep["archivo_existe"] = capitulo.archivo_existe if capitulo else False
+            else:
+                ep["serie_id"] = None
+
+        return Response({
+            "nombre": "Últimos episodios",
+            "episodios": trending,
+            "total": len(trending),
+        })
+    except Exception as e:
+        logger.error(f"Error obteniendo ultimos episodios: {e}")
+        return Response(
+            {"error": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )

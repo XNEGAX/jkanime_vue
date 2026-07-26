@@ -1,9 +1,24 @@
 import axios from 'axios'
+import { useConfigStore } from '../stores/config'
 
 const api = axios.create({
-  baseURL: '/api',
   headers: { 'Content-Type': 'application/json' },
 })
+
+api.interceptors.request.use((config) => {
+  const configStore = useConfigStore()
+  if (configStore.baseUrl) {
+    config.baseURL = `${configStore.baseUrl}/api`
+  } else {
+    config.baseURL = '/api'
+  }
+  return config
+})
+
+export function getApiBaseUrl() {
+  const configStore = useConfigStore()
+  return configStore.baseUrl ? `${configStore.baseUrl}/api` : '/api'
+}
 
 export function getSeries(search = '') {
   const params = search ? { search } : {}
@@ -77,11 +92,31 @@ export function refrescarPortada(serieId) {
 }
 
 export function getVideoUrl(capituloId) {
+  const configStore = useConfigStore()
+  if (configStore.baseUrl) {
+    return `${configStore.baseUrl}/api/video/${capituloId}/`
+  }
+  return `/api/video/${capituloId}/`
+}
+
+export function getVideoBeaconUrl(capituloId) {
+  const configStore = useConfigStore()
+  if (configStore.baseUrl) {
+    return `${configStore.baseUrl}/api/video/${capituloId}/`
+  }
   return `/api/video/${capituloId}/`
 }
 
 export function guardarProgreso(capituloId, segundo) {
   return api.post(`/capitulos/${capituloId}/progreso/`, { segundo })
+}
+
+export function getGuardarProgresoUrl(capituloId) {
+  const configStore = useConfigStore()
+  if (configStore.baseUrl) {
+    return `${configStore.baseUrl}/api/capitulos/${capituloId}/progreso/`
+  }
+  return `/api/capitulos/${capituloId}/progreso/`
 }
 
 export function verificarCapitulo(capituloId) {
@@ -92,4 +127,12 @@ export function verificarCapitulo(capituloId) {
 
 export function repararCapitulo(capituloId) {
   return api.post(`/capitulos/${capituloId}/reparar/`)
+}
+
+export function getUltimosEpisodios() {
+  return api.get('/ultimos-episodios/')
+}
+
+export function getFavoritosByEstado(estado) {
+  return api.get('/series/favoritos/', { params: { estado } })
 }

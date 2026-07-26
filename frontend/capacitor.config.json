@@ -1,0 +1,16 @@
+{
+  "appId": "com.animewing.app",
+  "appName": "AnimeWing",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1500,
+      "launchAutoHide": true,
+      "androidScaleType": "CENTER_CROP",
+      "splashFullScreen": true,
+      "splashImmersive": true,
+      "backgroundColor": "#F7F8FC"
+    }
+  }
+}

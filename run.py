@@ -27,7 +27,7 @@ def kill_process_on_port(port):
 
 def main():
     print("============================================")
-    print("   Jkanime Vue - Gestor de Series")
+    print("   AnimeWing")
     print("============================================")
     print()
 

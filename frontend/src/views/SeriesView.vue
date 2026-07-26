@@ -19,7 +19,7 @@
     </div>
 
     <template v-else-if="series.length">
-      <div v-if="!gruposPaginados.length" class="loading" style="color:#666;">
+      <div v-if="!gruposPaginados.length" class="loading" style="color:var(--text-muted);">
         {{ searchQuery ? 'No se encontraron series para "' + searchQuery + '"' : 'No hay series registradas.' }}
       </div>
 
@@ -106,7 +106,7 @@
       </template>
     </template>
 
-    <div v-else class="loading" style="color:#666;">
+    <div v-else class="loading" style="color:var(--text-muted);">
       {{ searchQuery ? 'No se encontraron series para "' + searchQuery + '"' : 'No hay series registradas.' }}
     </div>
   </div>
@@ -352,19 +352,19 @@ function capitalize(str) {
   gap: 10px;
   margin-bottom: 10px;
   padding-bottom: 6px;
-  border-bottom: 2px solid #e94560;
+  border-bottom: 2px solid var(--primary);
 }
 
 .dia-group-name {
   font-size: 1.1rem;
   font-weight: 700;
-  color: #e94560;
+  color: var(--primary);
   text-transform: capitalize;
 }
 
 .dia-group-count {
-  background: #1a1a2e;
-  color: #888;
+  background: var(--primary);
+  color: var(--text-muted);
   padding: 2px 10px;
   border-radius: 12px;
   font-size: 0.75rem;
@@ -375,32 +375,32 @@ function capitalize(str) {
 .serie-row:hover .delete-btn { opacity: 1; }
 .cover-img { width: 80px; height: 60px; object-fit: cover; border-radius: 4px; }
 .cover-placeholder {
-  width: 80px; height: 60px; background: #2a2a2a;
+  width: 80px; height: 60px; background: var(--border-light);
   display: flex; align-items: center; justify-content: center;
-  border-radius: 4px; color: #555; font-size: 0.7rem;
+  border-radius: 4px; color: var(--text-muted); font-size: 0.7rem;
 }
 .alert { padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 0.9rem; }
-.alert-success { background: #1a3a1a; border: 1px solid #27ae60; color: #27ae60; }
-.alert-error { background: #3a1a1a; border: 1px solid #e94560; color: #e94560; }
+.alert-success { background: rgba(39, 174, 96, 0.12); border: 1px solid #27ae60; color: #27ae60; }
+.alert-error { background: rgba(0, 83, 156, 0.1); border: 1px solid var(--primary); color: var(--primary); }
 
 .fav-btn {
   background: none;
   border: none;
   font-size: 1.3rem;
   cursor: pointer;
-  color: #444;
+  color: var(--border-light);
   transition: all 0.2s;
   padding: 4px;
   line-height: 1;
 }
 
 .fav-btn:hover {
-  color: #e94560;
+  color: var(--primary);
   transform: scale(1.2);
 }
 
 .fav-btn.active {
-  color: #e94560;
+  color: var(--primary);
 }
 
 .delete-btn {
@@ -408,7 +408,7 @@ function capitalize(str) {
   border: none;
   font-size: 1.1rem;
   cursor: pointer;
-  color: #555;
+  color: var(--text-muted);
   padding: 4px;
   line-height: 1;
   opacity: 0.4;
@@ -416,7 +416,7 @@ function capitalize(str) {
 }
 
 .delete-btn:hover {
-  color: #e94560;
+  color: var(--primary);
   opacity: 1;
   transform: scale(1.2);
 }
@@ -430,18 +430,18 @@ function capitalize(str) {
 }
 
 .estado-en_emision {
-  background: #1a2a3a;
-  color: #3498db;
+  background: rgba(0, 83, 156, 0.1);
+  color: var(--primary);
 }
 
 .estado-concluido {
-  background: #1a3a1a;
+  background: rgba(39, 174, 96, 0.12);
   color: #27ae60;
 }
 
 .estado-desconocido {
-  background: #2a2a2a;
-  color: #888;
+  background: var(--border-light);
+  color: var(--text-muted);
 }
 
 .header-right {
@@ -454,12 +454,12 @@ function capitalize(str) {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #888;
+  color: var(--text-muted);
   font-size: 0.8rem;
 }
 
 .verificar-detail {
-  color: #aaa;
+  color: var(--text-muted);
   font-size: 0.75rem;
   margin-left: 4px;
   opacity: 0.8;
@@ -469,8 +469,8 @@ function capitalize(str) {
   display: inline-block;
   width: 14px;
   height: 14px;
-  border: 2px solid #333;
-  border-top-color: #e94560;
+  border: 2px solid var(--border-light);
+  border-top-color: var(--primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -482,15 +482,15 @@ function capitalize(str) {
   margin-top: 24px; padding: 12px 0;
 }
 .page-btn {
-  background: #1a1a2e; color: #888; border: 1px solid #333; border-radius: 6px;
+  background: var(--primary); color: var(--text-muted); border: 1px solid var(--border-light); border-radius: 6px;
   padding: 6px 10px; cursor: pointer; font-size: 0.8rem; font-weight: 600;
   transition: all 0.2s;
 }
-.page-btn:hover:not(:disabled) { color: #e94560; border-color: #e94560; }
-.page-btn.active { background: #e94560; color: white; border-color: #e94560; }
-.page-btn.today:not(.active) { border-color: #e94560; color: #e94560; }
+.page-btn:hover:not(:disabled) { color: var(--primary); border-color: var(--primary); }
+.page-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+.page-btn.today:not(.active) { border-color: var(--primary); color: var(--primary); }
 .page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
-.page-dots { color: #555; padding: 0 4px; font-size: 0.8rem; }
-.badge-ok { background: #1a3a1a; color: #27ae60; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
-.badge-pending { background: #2a2a2a; color: #aaa; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
+.page-dots { color: var(--text-muted); padding: 0 4px; font-size: 0.8rem; }
+.badge-ok { background: rgba(39, 174, 96, 0.12); color: #27ae60; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
+.badge-pending { background: var(--border-light); color: var(--text-muted); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
 </style>

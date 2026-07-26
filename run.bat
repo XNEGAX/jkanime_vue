@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul 2>&1
-title Jkanime Vue - Gestor de Series
+title AnimeWing
 setlocal EnableDelayedExpansion
 
 set "PROJECT_DIR=%~dp0"
@@ -8,7 +8,7 @@ set "VENV_DIR=%PROJECT_DIR%venv"
 set "NODE_DIR=%PROJECT_DIR%frontend"
 
 echo ============================================
-echo   Jkanime Vue - Gestor de Series
+echo   AnimeWing
 echo ============================================
 echo.
 

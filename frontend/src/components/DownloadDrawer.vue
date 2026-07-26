@@ -58,8 +58,8 @@ const downloadsOrdenados = computed(() => {
   right: -400px;
   width: 380px;
   height: 100vh;
-  background: #1a1a1a;
-  border-left: 2px solid #e94560;
+  background: white;
+  border-left: 2px solid var(--primary);
   z-index: 1000;
   transition: right 0.3s ease;
   display: flex;
@@ -75,25 +75,25 @@ const downloadsOrdenados = computed(() => {
   justify-content: space-between;
   align-items: center;
   padding: 16px 20px;
-  border-bottom: 1px solid #2a2a2a;
+  border-bottom: 1px solid var(--border-light);
 }
 
 .drawer-header h3 {
-  color: #e94560;
+  color: var(--primary);
   font-size: 1rem;
 }
 
 .drawer-close {
   background: none;
   border: none;
-  color: #888;
+  color: var(--text-muted);
   font-size: 1.5rem;
   cursor: pointer;
   padding: 0 4px;
 }
 
 .drawer-close:hover {
-  color: #e94560;
+  color: var(--primary);
 }
 
 .drawer-body {
@@ -104,7 +104,7 @@ const downloadsOrdenados = computed(() => {
 
 .drawer-empty {
   text-align: center;
-  color: #555;
+  color: var(--text-muted);
   padding: 40px 20px;
 }
 </style>

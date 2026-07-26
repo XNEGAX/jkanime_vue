@@ -35,7 +35,7 @@
       <div class="serie-info" v-if="serie">
         <img v-if="serie.portada_url" :src="serie.portada_url" class="cover-large" />
         <div class="info-text">
-          <p><strong>Total en JKanime:</strong> {{ totalJk }} episodios</p>
+          <p><strong>Total en AnimeWing:</strong> {{ totalJk }} episodios</p>
           <p><strong>Registrados:</strong> {{ capitulos.length }}</p>
           <p><strong>Nuevos encontrados:</strong> {{ nuevosEncontrados }}</p>
         </div>
@@ -386,18 +386,18 @@ async function descargarTodos() {
   align-items: flex-start;
 }
 .cover-large { width: 200px; border-radius: 8px; object-fit: cover; }
-.info-text { color: #888; }
+.info-text { color: var(--text-muted); }
 .info-text p { margin-bottom: 4px; }
 .alert { padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 0.9rem; }
-.alert-success { background: #1a3a1a; border: 1px solid #27ae60; color: #27ae60; }
-.alert-error { background: #3a1a1a; border: 1px solid #e94560; color: #e94560; }
+.alert-success { background: rgba(39, 174, 96, 0.12); border: 1px solid #27ae60; color: #27ae60; }
+.alert-error { background: rgba(0, 83, 156, 0.1); border: 1px solid var(--primary); color: var(--primary); }
 
 .fav-btn-inline {
   background: none;
   border: none;
   font-size: 1.3rem;
   cursor: pointer;
-  color: #444;
+  color: var(--border-light);
   transition: all 0.2s;
   padding: 4px 8px;
   line-height: 1;
@@ -405,16 +405,16 @@ async function descargarTodos() {
 }
 
 .fav-btn-inline:hover {
-  color: #e94560;
+  color: var(--primary);
   transform: scale(1.2);
 }
 
 .fav-btn-inline.active {
-  color: #e94560;
+  color: var(--primary);
 }
 
 .date-cell {
-  color: #888;
+  color: var(--text-muted);
   font-size: 0.8rem;
 }
 
@@ -423,9 +423,9 @@ async function descargarTodos() {
 }
 
 :deep(.btn-danger) {
-  background: #e94560;
+  background: var(--primary);
   color: #fff;
-  border-color: #e94560;
+  border-color: var(--primary);
 }
 
 :deep(.btn-warning) {
@@ -444,7 +444,7 @@ async function descargarTodos() {
   margin-left: 8px;
   padding: 1px 8px;
   border-radius: 10px;
-  background: #1a3a1a;
+  background: rgba(39, 174, 96, 0.12);
   color: #27ae60;
   font-size: 0.7rem;
   font-weight: 600;

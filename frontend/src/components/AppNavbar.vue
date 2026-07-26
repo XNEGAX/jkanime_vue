@@ -1,7 +1,7 @@
 <template>
   <nav class="navbar">
     <router-link to="/" class="navbar-brand">
-      <h1>JKanime Gestor</h1>
+      <h1>AnimeWing</h1>
     </router-link>
     <div class="navbar-center">
       <div class="search-box">
@@ -18,6 +18,9 @@
       </div>
     </div>
     <div class="navbar-right">
+      <button class="nav-btn nav-btn-icon" @click="$emit('toggle-settings')" title="Configurar servidor">
+        &#9881;
+      </button>
       <button class="nav-btn" @click="showUrlModal = true" title="Agregar serie por URL">
         + Agregar URL
       </button>
@@ -76,19 +79,13 @@ function onSearch() {
   clearTimeout(debounceTimer)
   debounceTimer = setTimeout(() => {
     const query = searchQuery.value.trim()
-    if (router.currentRoute.value.name !== 'series') {
-      router.push({ name: 'series', query: query ? { search: query } : {} })
-    } else {
-      router.replace({ query: query ? { search: query } : {} })
-    }
+    router.replace({ query: query ? { search: query } : {} })
   }, 300)
 }
 
 function clearSearch() {
   searchQuery.value = ''
-  if (router.currentRoute.value.name === 'series') {
-    router.replace({ query: {} })
-  }
+  router.replace({ query: {} })
 }
 
 function setSearchValue(val) {
@@ -130,6 +127,7 @@ async function agregarUrl() {
   }
 }
 
+defineEmits(['toggle-settings'])
 defineExpose({ searchQuery, setSearchValue })
 </script>
 
@@ -138,17 +136,17 @@ defineExpose({ searchQuery, setSearchValue })
   position: sticky;
   top: 0;
   z-index: 100;
-  background: #1a1a2e;
+  background: var(--primary);
   padding: 12px 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 2px solid #e94560;
+  border-bottom: 2px solid var(--accent-cta);
   gap: 16px;
 }
 
 .navbar-brand h1 {
-  color: #e94560;
+  color: white;
   font-size: 1.4rem;
   white-space: nowrap;
 }
@@ -161,20 +159,20 @@ defineExpose({ searchQuery, setSearchValue })
 .search-box {
   display: flex;
   align-items: center;
-  background: #16213e;
-  border: 1px solid #333;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
   border-radius: 20px;
   padding: 0 12px;
   transition: border-color 0.2s;
 }
 
 .search-box:focus-within {
-  border-color: #e94560;
+  border-color: var(--accent-cta);
 }
 
 .search-icon {
   font-size: 0.9rem;
-  color: #888;
+  color: var(--text-muted);
   margin-right: 8px;
 }
 
@@ -182,27 +180,27 @@ defineExpose({ searchQuery, setSearchValue })
   background: transparent;
   border: none;
   outline: none;
-  color: #e0e0e0;
+  color: var(--text-main);
   font-size: 0.85rem;
   padding: 8px 0;
   width: 100%;
 }
 
 .search-input::placeholder {
-  color: #666;
+  color: var(--text-muted);
 }
 
 .search-clear {
   background: none;
   border: none;
-  color: #888;
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 0.9rem;
   padding: 2px 4px;
 }
 
 .search-clear:hover {
-  color: #e94560;
+  color: var(--accent-cta);
 }
 
 .navbar-right {
@@ -213,8 +211,8 @@ defineExpose({ searchQuery, setSearchValue })
 
 .nav-btn {
   background: transparent;
-  color: #e94560;
-  border: 1px solid #e94560;
+  color: white;
+  border: 1px solid white;
   border-radius: 20px;
   padding: 6px 14px;
   cursor: pointer;
@@ -225,13 +223,19 @@ defineExpose({ searchQuery, setSearchValue })
 }
 
 .nav-btn:hover {
-  background: #e94560;
-  color: #fff;
+  background: white;
+  color: var(--primary);
+}
+
+.nav-btn-icon {
+  font-size: 1.2rem;
+  padding: 6px 10px;
+  line-height: 1;
 }
 
 .download-badge {
-  background: #e94560;
-  color: white;
+  background: var(--accent-cta);
+  color: var(--text-main);
   border: none;
   border-radius: 20px;
   padding: 6px 16px;
@@ -244,7 +248,7 @@ defineExpose({ searchQuery, setSearchValue })
 }
 
 .download-badge:hover {
-  background: #c73e54;
+  background: #e0b32a;
 }
 
 .badge-icon {
@@ -268,8 +272,8 @@ defineExpose({ searchQuery, setSearchValue })
 }
 
 .modal-box {
-  background: #1a1a2e;
-  border: 1px solid #333;
+  background: white;
+  border: 1px solid var(--border-light);
   border-radius: 12px;
   padding: 28px 32px;
   width: 420px;
@@ -277,13 +281,13 @@ defineExpose({ searchQuery, setSearchValue })
 }
 
 .modal-box h3 {
-  color: #e94560;
+  color: var(--primary);
   margin-bottom: 8px;
   font-size: 1.1rem;
 }
 
 .modal-desc {
-  color: #888;
+  color: var(--text-muted);
   font-size: 0.85rem;
   margin-bottom: 16px;
 }
@@ -291,10 +295,10 @@ defineExpose({ searchQuery, setSearchValue })
 .modal-input {
   width: 100%;
   padding: 10px 14px;
-  border: 1px solid #333;
+  border: 1px solid var(--border-light);
   border-radius: 8px;
-  background: #16213e;
-  color: #e0e0e0;
+  background: var(--bg-primary);
+  color: var(--text-main);
   font-size: 0.85rem;
   outline: none;
   box-sizing: border-box;
@@ -302,11 +306,11 @@ defineExpose({ searchQuery, setSearchValue })
 }
 
 .modal-input:focus {
-  border-color: #e94560;
+  border-color: var(--primary);
 }
 
 .modal-error {
-  color: #e94560;
+  color: var(--primary);
   font-size: 0.8rem;
   margin-top: 8px;
 }

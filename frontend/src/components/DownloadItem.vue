@@ -83,12 +83,12 @@ function cancelar() {
 
 <style scoped>
 .download-item {
-  background: #222;
+  background: var(--bg-primary);
   border-radius: 8px;
   padding: 12px;
   margin-bottom: 8px;
   position: relative;
-  border: 1px solid #333;
+  border: 1px solid var(--border-light);
   transition: opacity 0.3s;
 }
 
@@ -97,7 +97,7 @@ function cancelar() {
 }
 
 .download-item.status-failure {
-  border-color: #e94560;
+  border-color: var(--primary);
   opacity: 0.7;
 }
 
@@ -119,12 +119,12 @@ function cancelar() {
 }
 
 .item-ep {
-  color: #888;
+  color: var(--text-muted);
   font-size: 0.8rem;
 }
 
 .item-phase {
-  color: #888;
+  color: var(--text-muted);
   font-size: 0.75rem;
   margin-bottom: 6px;
 }
@@ -138,13 +138,13 @@ function cancelar() {
 }
 
 .item-server {
-  color: #555;
+  color: var(--text-muted);
   font-size: 0.7rem;
 }
 
 .text-success { color: #27ae60; }
-.text-error { color: #e94560; }
-.text-muted { color: #555; }
+.text-error { color: var(--primary); }
+.text-muted { color: var(--text-muted); }
 
 .item-actions {
   position: absolute;
@@ -155,17 +155,17 @@ function cancelar() {
 .btn-cancel, .btn-remove {
   background: none;
   border: none;
-  color: #888;
+  color: var(--text-muted);
   font-size: 1.2rem;
   cursor: pointer;
   padding: 0 4px;
 }
 
 .btn-cancel:hover {
-  color: #e94560;
+  color: var(--primary);
 }
 
 .btn-remove:hover {
-  color: #e94560;
+  color: var(--primary);
 }
 </style>

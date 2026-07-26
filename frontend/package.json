@@ -1,14 +1,21 @@
 {
-  "name": "jkanime-vue",
+  "name": "anime-wing",
   "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:android": "vite build && cap copy android",
+    "cap:open": "cap open android",
+    "cap:sync": "cap sync android"
   },
   "dependencies": {
+    "@capacitor/android": "^8.4.2",
+    "@capacitor/cli": "^8.4.2",
+    "@capacitor/core": "^8.4.2",
+    "@capacitor/preferences": "^8.0.1",
     "axios": "^1.7.0",
     "pinia": "^3.0.0",
     "plyr": "^3.8.4",

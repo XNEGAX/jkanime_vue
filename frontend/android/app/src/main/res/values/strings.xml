@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">AnimeWing</string>
+    <string name="title_activity_main">AnimeWing</string>
+    <string name="package_name">com.animewing.app</string>
+    <string name="custom_url_scheme">com.animewing.app</string>
+</resources>

@@ -21,4 +21,5 @@ urlpatterns = [
     path('video/<int:capitulo_id>/', views.api_servir_video, name='api_servir_video'),
     path('capitulos/<int:capitulo_id>/verificar/', views.api_verificar_archivo, name='api_verificar_archivo'),
     path('capitulos/<int:capitulo_id>/reparar/', views.api_reparar_capitulo, name='api_reparar_capitulo'),
+    path('ultimos-episodios/', views.api_ultimos_episodios, name='api_ultimos_episodios'),
 ]

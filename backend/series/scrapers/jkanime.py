@@ -93,6 +93,65 @@ class JKanimeScraper(BaseScraper):
             logger.error(f"Error obteniendo series de JKanime: {e}")
             return []
 
+    def get_trending(self):
+        """Obtiene los ultimos episodios del trending de la pagina principal."""
+        scraper = self._get_scraper()
+        try:
+            resp = scraper.get(self.BASE_URL, timeout=self.TIMEOUT)
+            resp.raise_for_status()
+            soup = BeautifulSoup(resp.text, "html.parser")
+
+            trending = soup.find("div", class_="trending__anime")
+            if not trending:
+                logger.warning("No se encontro el contenedor trending__anime")
+                return []
+
+            tabs = {
+                "animes": "Animes",
+                "donghuas": "Donghuas",
+                "ovas": "Ovas",
+            }
+            results = []
+            for tab_id, tab_name in tabs.items():
+                pane = trending.find("div", id=tab_id)
+                if not pane:
+                    continue
+                cards = pane.find_all("div", class_="card")
+                for card in cards:
+                    a_tag = card.find("a")
+                    if not a_tag:
+                        continue
+                    url = a_tag.get("href", "")
+                    if not url:
+                        continue
+
+                    img = card.find("img", class_="card-img-top")
+                    imagen = img.get("src", "") if img else ""
+
+                    h5 = card.find("h5", class_="card-title")
+                    if not h5:
+                        h5 = card.find("h5", class_="strlimit")
+                    nombre = h5.get_text(strip=True) if h5 else ""
+
+                    badge = card.find("span", class_="badge-primary")
+                    episodio_text = badge.get_text(strip=True) if badge else ""
+                    episodio = ""
+                    ep_match = re.search(r"(\d+)", episodio_text)
+                    if ep_match:
+                        episodio = ep_match.group(1)
+
+                    results.append({
+                        "url": url,
+                        "imagen": imagen,
+                        "nombre": nombre,
+                        "episodio": episodio,
+                        "tab": tab_name,
+                    })
+            return results
+        except Exception as e:
+            logger.error(f"Error obteniendo trending de JKanime: {e}")
+            return []
+
     def get_series_info(self, url: str) -> dict | None:
         """Obtiene info de una serie desde su URL directa de JKanime."""
         slug = self._extract_slug(url)

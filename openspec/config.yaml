@@ -1,0 +1,43 @@
+schema: spec-driven
+
+context: |
+  Project: jkanime_vue (AnimeWing) — anime series manager with scraper
+  Frontend: Vue 3 + Vite 6 + Pinia 3 + Vue Router 4 + Capacitor (Android)
+  Backend: Django 6+ / DRF 3.15+ / SQLite
+  Background tasks: threading + queue.Queue (10 workers, in-memory state)
+  Platform: Windows-only (taskkill, netstat, CREATE_NO_WINDOW)
+  Locale: es / America/Santiago
+  UI: Wing Zero Custom palette via CSS variables, Netflix/Crunchyroll-inspired
+  Name: AnimeWing (branded from jkanime_vue)
+  Conventions: reuse existing components, no duplication, web+Android compatible
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+    - Consider both web and Android (Capacitor) impact
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Include sequence diagrams for complex flows (especially scraping + task_runner)
+    - Document architecture decisions with rationale
+    - Consider Capacitor/Android compatibility
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+  apply:
+    guidelines:
+      - Follow existing code patterns
+      - Reuse existing components, services, composables
+      - Never duplicate logic
+      - Maintain Wing Zero Custom palette consistency
+      - Use CSS variables, never raw HEX in components
+      - Keep web and Android behavior identical
+    tdd: false
+    test_command: ""
+  verify:
+    test_command: ""
+    build_command: "cd frontend && npm run build"
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas

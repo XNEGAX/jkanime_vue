@@ -1,0 +1,15 @@
+{
+  "name": "AnimeWing",
+  "short_name": "AnimeWing",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F7F8FC",
+  "theme_color": "#00539C",
+  "icons": [
+    {
+      "src": "/PI_Wing_Zero_Mercy.webp",
+      "sizes": "250x250",
+      "type": "image/webp"
+    }
+  ]
+}

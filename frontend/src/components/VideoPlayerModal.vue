@@ -82,7 +82,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { getCapituloDetail, getVideoUrl, guardarProgreso, repararCapitulo, descargarCapitulo } from '../api'
+import { getCapituloDetail, getVideoUrl, guardarProgreso, repararCapitulo, descargarCapitulo, getGuardarProgresoUrl } from '../api'
 import { useDownloadStore } from '../stores/downloads'
 
 const props = defineProps({
@@ -147,7 +147,7 @@ function guardarProgresoBeacon() {
   const seg = Math.floor(v.currentTime)
   if (seg > 0) {
     const blob = new Blob([JSON.stringify({ segundo: seg })], { type: 'application/json' })
-    navigator.sendBeacon(`/api/capitulos/${c.id}/progreso/`, blob)
+    navigator.sendBeacon(getGuardarProgresoUrl(c.id), blob)
   }
 }
 
@@ -336,7 +336,7 @@ onBeforeUnmount(() => {
   align-items: center;
   padding: 12px 20px;
   background: #111;
-  border-bottom: 1px solid #222;
+  border-bottom: 1px solid var(--border-light);
   flex-shrink: 0;
   z-index: 10;
 }
@@ -349,9 +349,9 @@ onBeforeUnmount(() => {
 }
 
 .vpm-back {
-  background: #1a1a2e;
-  color: #e94560;
-  border: 1px solid #e94560;
+  background: var(--primary);
+  color: white;
+  border: 1px solid var(--primary);
   border-radius: 6px;
   padding: 6px 14px;
   cursor: pointer;
@@ -362,7 +362,7 @@ onBeforeUnmount(() => {
 }
 
 .vpm-back:hover {
-  background: #e94560;
+  background: #004275;
   color: #fff;
 }
 
@@ -381,9 +381,9 @@ onBeforeUnmount(() => {
 }
 
 .vpm-nav-btn {
-  background: #1a1a2e;
-  color: #e94560;
-  border: 1px solid #333;
+  background: var(--primary);
+  color: white;
+  border: 1px solid var(--border-light);
   border-radius: 6px;
   padding: 6px 14px;
   cursor: pointer;
@@ -392,8 +392,8 @@ onBeforeUnmount(() => {
 }
 
 .vpm-nav-btn:hover {
-  border-color: #e94560;
-  background: #222;
+  border-color: var(--accent-cta);
+  background: #004275;
 }
 
 .vpm-player-area {
@@ -423,7 +423,7 @@ video {
   justify-content: center;
   gap: 16px;
   background: rgba(0, 0, 0, 0.7);
-  color: #888;
+  color: var(--text-muted);
   z-index: 5;
   font-size: 0.95rem;
 }
@@ -433,7 +433,7 @@ video {
   bottom: 0;
   left: 0;
   right: 0;
-  background: rgba(233, 69, 96, 0.9);
+  background: rgba(0, 83, 156, 0.9);
   color: #fff;
   padding: 10px 20px;
   text-align: center;
@@ -448,7 +448,7 @@ video {
 
 .vpm-repair-btn {
   background: #fff;
-  color: #e94560;
+  color: var(--primary);
   border: none;
   border-radius: 6px;
   padding: 5px 14px;
@@ -483,8 +483,8 @@ video {
 }
 
 .vpm-resume-box {
-  background: #1a1a2e;
-  border: 1px solid #333;
+  background: var(--primary);
+  border: 1px solid var(--border-light);
   border-radius: 12px;
   padding: 24px 32px;
   display: flex;
@@ -496,7 +496,7 @@ video {
 
 .vpm-resume-icon {
   font-size: 2rem;
-  color: #e94560;
+  color: var(--accent-cta);
 }
 
 .vpm-resume-text {
@@ -506,7 +506,7 @@ video {
 }
 
 .vpm-resume-btn {
-  background: #e94560;
+  background: var(--primary);
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -519,18 +519,18 @@ video {
 }
 
 .vpm-resume-btn:hover {
-  background: #d63850;
+  background: #004275;
 }
 
 .vpm-resume-btn.secondary {
   background: transparent;
-  border: 1px solid #555;
-  color: #888;
+  border: 1px solid var(--text-muted);
+  color: var(--text-muted);
 }
 
 .vpm-resume-btn.secondary:hover {
-  border-color: #e94560;
-  color: #e94560;
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 /* --- Saltar OP --- */
@@ -539,7 +539,7 @@ video {
   position: absolute;
   bottom: 80px;
   right: 20px;
-  background: rgba(233, 69, 96, 0.85);
+  background: rgba(0, 83, 156, 0.85);
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -553,6 +553,6 @@ video {
 }
 
 .vpm-skip-op:hover {
-  background: #e94560;
+  background: var(--primary);
 }
 </style>

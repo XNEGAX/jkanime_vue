@@ -1,12 +1,12 @@
 <template>
   <aside class="sidebar">
-    <router-link to="/" class="sidebar-link" :class="{ active: isActive('series') }">
-      <span class="sidebar-icon">&#127968;</span>
-      <span class="sidebar-label">Home</span>
-    </router-link>
-    <router-link to="/favoritos" class="sidebar-link" :class="{ active: isActive('favorites') }">
+    <router-link to="/" class="sidebar-link" :class="{ active: isActive('favorites') }">
       <span class="sidebar-icon">&#9829;</span>
       <span class="sidebar-label">Favoritos</span>
+    </router-link>
+    <router-link to="/series" class="sidebar-link" :class="{ active: isActive('series') }">
+      <span class="sidebar-icon">&#127968;</span>
+      <span class="sidebar-label">Series</span>
     </router-link>
   </aside>
 </template>
@@ -28,8 +28,8 @@ function isActive(name) {
   left: 0;
   width: 60px;
   height: 100vh;
-  background: #1a1a2e;
-  border-right: 2px solid #e94560;
+  background: var(--primary);
+  border-right: 2px solid var(--accent-cta);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -46,19 +46,19 @@ function isActive(name) {
   width: 48px;
   height: 48px;
   border-radius: 10px;
-  color: #666;
+  color: rgba(255, 255, 255, 0.5);
   transition: all 0.2s;
   text-decoration: none;
 }
 
 .sidebar-link:hover {
-  color: #e94560;
-  background: rgba(233, 69, 96, 0.1);
+  color: var(--accent-cta);
+  background: rgba(244, 196, 48, 0.15);
 }
 
 .sidebar-link.active {
-  color: #e94560;
-  background: rgba(233, 69, 96, 0.15);
+  color: var(--accent-cta);
+  background: rgba(244, 196, 48, 0.2);
 }
 
 .sidebar-icon {

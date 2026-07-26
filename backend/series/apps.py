@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 class SeriesConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'series'
-    verbose_name = 'Series JKanime'
+    verbose_name = 'AnimeWing'
 
     def ready(self):
         """Arranca los workers threading al iniciar Django (mismo proceso)."""
