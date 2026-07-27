@@ -257,6 +257,8 @@ def _descargar_capitulo_core(capitulo: Capitulo, update_state) -> dict:
                 continue  # Probar con el siguiente servidor
 
             capitulo.ruta_archivo = str(filepath)
+            capitulo.serie.favorito = True
+            capitulo.serie.save(update_fields=['favorito'])
             capitulo.save()
             return {
                 'status': 'ok',
