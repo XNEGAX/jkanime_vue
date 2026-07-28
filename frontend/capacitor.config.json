@@ -3,6 +3,10 @@
   "appName": "AnimeWing TV",
   "webDir": "dist-tv",
   "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  },
   "plugins": {
     "SplashScreen": {
       "launchShowDuration": 1500,
