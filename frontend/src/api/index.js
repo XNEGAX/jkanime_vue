@@ -1,19 +1,35 @@
-import axios from 'axios'
 import { useConfigStore } from '../stores/config'
 
-const api = axios.create({
-  headers: { 'Content-Type': 'application/json' },
-})
-
-api.interceptors.request.use((config) => {
+async function request(path, { method = 'GET', params, data, headers = {}, cache } = {}) {
   const configStore = useConfigStore()
-  if (configStore.baseUrl) {
-    config.baseURL = `${configStore.baseUrl}/api`
-  } else {
-    config.baseURL = '/api'
+  const base = configStore.baseUrl ? `${configStore.baseUrl}/api` : '/api'
+  const url = new URL(`${base}${path}`, window.location.origin)
+
+  for (const [key, value] of Object.entries(params || {})) {
+    if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, value)
   }
-  return config
-})
+
+  const response = await fetch(url.toString(), {
+    method,
+    cache,
+    headers: { Accept: 'application/json', ...(data !== undefined ? { 'Content-Type': 'application/json' } : {}), ...headers },
+    body: data !== undefined ? JSON.stringify(data) : undefined,
+  })
+  const contentType = response.headers.get('content-type') || ''
+  const payload = contentType.includes('application/json') ? await response.json() : await response.text()
+  if (!response.ok) {
+    const error = new Error(payload?.error || payload?.detail || `HTTP ${response.status}`)
+    error.response = { status: response.status, data: payload }
+    throw error
+  }
+  return { data: payload, status: response.status, headers: response.headers }
+}
+
+const api = {
+  get: (path, config = {}) => request(path, config),
+  post: (path, data, config = {}) => request(path, { ...config, method: 'POST', data }),
+  delete: (path, config = {}) => request(path, { ...config, method: 'DELETE' }),
+}
 
 export function getApiBaseUrl() {
   const configStore = useConfigStore()
@@ -47,7 +63,7 @@ export function verificarSeries() {
 
 export function getVerificarStatus() {
   return api.get('/series/verificar/', {
-    headers: { 'Cache-Control': 'no-cache' },
+    cache: 'no-store',
   })
 }
 
@@ -69,13 +85,13 @@ export function descargarTodos(serieId) {
 
 export function getTaskState(taskId) {
   return api.get(`/tareas/${taskId}/`, {
-    headers: { 'Cache-Control': 'no-cache' },
+    cache: 'no-store',
   })
 }
 
 export function getActiveTasks() {
   return api.get('/tareas/activas/', {
-    headers: { 'Cache-Control': 'no-cache' },
+    cache: 'no-store',
   })
 }
 
@@ -121,7 +137,7 @@ export function getGuardarProgresoUrl(capituloId) {
 
 export function verificarCapitulo(capituloId) {
   return api.get(`/capitulos/${capituloId}/verificar/`, {
-    headers: { 'Cache-Control': 'no-cache' },
+    cache: 'no-store',
   })
 }
 

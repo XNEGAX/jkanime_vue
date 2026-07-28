@@ -1,7 +1,7 @@
 {
-  "appId": "com.animewing.app",
-  "appName": "AnimeWing",
-  "webDir": "dist",
+  "appId": "com.animewing.tv",
+  "appName": "AnimeWing TV",
+  "webDir": "dist-tv",
   "bundledWebRuntime": false,
   "plugins": {
     "SplashScreen": {
@@ -10,7 +10,7 @@
       "androidScaleType": "CENTER_CROP",
       "splashFullScreen": true,
       "splashImmersive": true,
-      "backgroundColor": "#F7F8FC"
+      "backgroundColor": "#07111F"
     }
   }
 }

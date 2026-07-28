@@ -81,6 +81,7 @@ DOWNLOAD_DIR = str(BASE_DIR / 'descargas')
 
 # CORS
 CORS_ALLOW_ALL_ORIGINS = True
+CORS_EXPOSE_HEADERS = ['Accept-Ranges', 'Content-Length', 'Content-Range', 'ETag']
 
 # DRF
 REST_FRAMEWORK = {
@@ -89,6 +90,5 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PAGINATION_CLASS': None,
 }
-
 
 

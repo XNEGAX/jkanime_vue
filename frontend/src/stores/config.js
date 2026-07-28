@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed, watch } from 'vue'
+import { ref, computed } from 'vue'
 import { Preferences } from '@capacitor/preferences'
 
 const CONFIG_KEY = 'server_config'
@@ -77,14 +77,6 @@ export const useConfigStore = defineStore('config', () => {
       // ignore
     }
   }
-
-  watch(isConfigured, (configured) => {
-    if (!configured) return
-    // Trigger a reload so the app picks up the new config
-    if (isCapacitor.value) {
-      window.location.reload()
-    }
-  })
 
   return {
     host,

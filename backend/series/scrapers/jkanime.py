@@ -5,6 +5,7 @@ import re
 import json
 import base64
 import logging
+import time
 
 import cloudscraper
 from bs4 import BeautifulSoup
@@ -97,7 +98,18 @@ class JKanimeScraper(BaseScraper):
         """Obtiene los ultimos episodios del trending de la pagina principal."""
         scraper = self._get_scraper()
         try:
-            resp = scraper.get(self.BASE_URL, timeout=self.TIMEOUT)
+            resp = None
+            for attempt in range(3):
+                resp = scraper.get(self.BASE_URL, timeout=self.TIMEOUT)
+                if resp.status_code < 500:
+                    break
+                logger.warning(
+                    "JKAnime trending respondio HTTP %s (intento %s/3)",
+                    resp.status_code,
+                    attempt + 1,
+                )
+                if attempt < 2:
+                    time.sleep(1.5 * (attempt + 1))
             resp.raise_for_status()
             soup = BeautifulSoup(resp.text, "html.parser")
 

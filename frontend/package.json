@@ -6,13 +6,17 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "dev:tv": "vite --config vite.tv.config.js",
+    "build:tv": "vite build --config vite.tv.config.js",
+    "sync:tv": "npm run build:tv && cap sync android",
     "preview": "vite preview",
-    "build:android": "vite build && cap copy android",
+    "build:android": "npm run build:tv && cap copy android",
     "cap:open": "cap open android",
     "cap:sync": "cap sync android"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.2",
+    "@capacitor/app": "^8.1.1",
     "@capacitor/cli": "^8.4.2",
     "@capacitor/core": "^8.4.2",
     "@capacitor/preferences": "^8.0.1",

@@ -14,8 +14,9 @@ from pathlib import Path
 
 import requests
 from django.conf import settings
+from django.core.cache import cache
 from django.core.files.base import ContentFile
-from django.http import FileResponse, Http404, HttpResponseNotModified
+from django.http import FileResponse, Http404, HttpResponse, HttpResponseNotModified, StreamingHttpResponse
 from django.utils.dateparse import parse_datetime
 from django.utils.http import http_date
 from PIL import Image as PILImage
@@ -542,9 +543,56 @@ def api_servir_video(request, capitulo_id):
     if if_none_match == etag:
         return HttpResponseNotModified()
 
-    response = FileResponse(open(file_path, 'rb'), as_attachment=False)
+    range_header = request.META.get('HTTP_RANGE', '').strip()
+    range_match = re.match(r'^bytes=(\d*)-(\d*)$', range_header)
+
+    if range_header and not range_match:
+        response = HttpResponse(status=416)
+        response['Content-Range'] = f'bytes */{file_stat.st_size}'
+        return response
+
+    if range_match:
+        first, last = range_match.groups()
+        if first:
+            start = int(first)
+            end = min(int(last), file_stat.st_size - 1) if last else file_stat.st_size - 1
+        elif last:
+            suffix_length = int(last)
+            start = max(0, file_stat.st_size - suffix_length)
+            end = file_stat.st_size - 1
+        else:
+            start, end = 0, file_stat.st_size - 1
+
+        if start >= file_stat.st_size or start > end:
+            response = HttpResponse(status=416)
+            response['Content-Range'] = f'bytes */{file_stat.st_size}'
+            return response
+
+        length = end - start + 1
+
+        def ranged_file_iterator(path, offset, remaining, chunk_size=1024 * 1024):
+            with open(path, 'rb') as video_file:
+                video_file.seek(offset)
+                while remaining > 0:
+                    chunk = video_file.read(min(chunk_size, remaining))
+                    if not chunk:
+                        break
+                    remaining -= len(chunk)
+                    yield chunk
+
+        response = StreamingHttpResponse(
+            ranged_file_iterator(file_path, start, length),
+            status=206,
+            content_type='video/mp4',
+        )
+        response['Content-Length'] = length
+        response['Content-Range'] = f'bytes {start}-{end}/{file_stat.st_size}'
+    else:
+        response = FileResponse(open(file_path, 'rb'), as_attachment=False)
+        response['Content-Type'] = 'video/mp4'
+        response['Content-Length'] = file_stat.st_size
+
     response['Content-Type'] = 'video/mp4'
-    response['Content-Length'] = file_stat.st_size
     response['Accept-Ranges'] = 'bytes'
     response['ETag'] = etag
     response['Cache-Control'] = 'public, max-age=86400'
@@ -643,6 +691,24 @@ def api_ultimos_episodios(request):
     try:
         s = get_scraper("jkanime")
         trending = s.get_trending()
+        if trending:
+            cache.set('jkanime_trending_last_valid', trending, timeout=24 * 60 * 60)
+        else:
+            trending = cache.get('jkanime_trending_last_valid') or []
+
+        # Si JKanime/Cloudflare no responde y el proceso no tiene cache previa,
+        # conservar Inicio operativo con los capitulos ya conocidos en SQLite.
+        if not trending:
+            trending = [
+                {
+                    'url': cap.url_fuente,
+                    'imagen': cap.serie.portada.url if cap.serie.portada else '',
+                    'nombre': cap.serie.nombre,
+                    'episodio': str(cap.numero),
+                    'tab': 'Animes',
+                }
+                for cap in Capitulo.objects.select_related('serie').order_by('-id')[:72]
+            ]
 
         # Precargar series de jkanime existentes en BD (slug -> serie)
         series_bd = {
