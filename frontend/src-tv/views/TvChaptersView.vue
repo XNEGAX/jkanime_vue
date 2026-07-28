@@ -1,8 +1,7 @@
 <template>
   <div class="tv-chapters-page">
     <header class="tv-chapters-hero">
-      <button class="tv-button tv-button--secondary" data-tv-focus @click="router.back()">← Volver</button>
-      <img v-if="serie?.portada_url" :src="serie.portada_url" :alt="serie.nombre">
+      <img v-if="serie?.portada_url" :src="getMediaUrl(serie.portada_url)" :alt="serie.nombre">
       <div class="tv-chapters-info">
         <p class="eyebrow">{{ statusLabel }}</p>
         <h1>{{ serie?.nombre || 'Cargando…' }}</h1>
@@ -33,7 +32,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getSerieDetail, getCapitulos, toggleFavorito, verificarCapitulo, descargarCapitulo, descargarTodos } from '../../src/api'
+import { getSerieDetail, getCapitulos, toggleFavorito, verificarCapitulo, descargarCapitulo, descargarTodos, getMediaUrl } from '../../src/api'
 import { useDownloadStore } from '../../src/stores/downloads'
 import { useSpatialNavigation, focusFirst } from '../composables/useSpatialNavigation'
 import TvPlayer from '../components/TvPlayer.vue'
@@ -88,11 +87,11 @@ useSpatialNavigation({ onBack: () => router.back() })
 
 <style scoped>
 .tv-chapters-page { min-height: 100vh; padding: 36px 54px 70px; background: linear-gradient(105deg, #07111f 25%, #102a45); }
-.tv-chapters-hero { display: grid; grid-template-columns: auto 260px 1fr; align-items: start; gap: 34px; margin-bottom: 42px; }
-.tv-chapters-hero > img { width: 260px; height: 340px; object-fit: cover; border-radius: 18px; }
-.tv-chapters-info { align-self: center; max-width: 720px; }
-.tv-chapters-info h1 { margin: 5px 0 13px; font-size: 48px; }
-.tv-chapters-info > p { color: var(--tv-muted); font-size: 20px; }
+.tv-chapters-hero { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); min-height: 520px; gap: 32px; margin-bottom: 48px; }
+.tv-chapters-hero > img { width: 100%; height: 520px; padding: 18px; object-fit: contain; border-radius: 22px; background: rgba(5, 15, 28, .72); }
+.tv-chapters-info { display: flex; flex-direction: column; justify-content: center; min-width: 0; padding: 48px; border-radius: 22px; background: rgba(10, 27, 45, .82); }
+.tv-chapters-info h1 { margin: 8px 0 18px; font-size: clamp(40px, 3vw, 58px); line-height: 1.08; }
+.tv-chapters-info > p { color: var(--tv-muted); font-size: 22px; }
 .tv-chapters-info .eyebrow { color: var(--tv-yellow); font-weight: 800; letter-spacing: 2px; }
 .tv-episodes h2 { font-size: 28px; }
 .tv-episode-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }

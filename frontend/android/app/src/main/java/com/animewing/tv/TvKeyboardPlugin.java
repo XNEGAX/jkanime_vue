@@ -38,26 +38,35 @@ public class TvKeyboardPlugin extends Plugin {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
             Button[] firstKey = { null };
-            String[][] rows = {
-                { "1", "2", "3" },
-                { "4", "5", "6" },
-                { "7", "8", "9" },
-                { "number".equals(kind) ? "Limpiar" : ".", "0", "⌫" }
-            };
+            String[][] rows = "number".equals(kind)
+                ? new String[][] {
+                    { "1", "2", "3" },
+                    { "4", "5", "6" },
+                    { "7", "8", "9" },
+                    { "Limpiar", "0", "⌫" }
+                }
+                : new String[][] {
+                    { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0" },
+                    { "q", "w", "e", "r", "t", "y", "u", "i", "o", "p" },
+                    { "a", "s", "d", "f", "g", "h", "j", "k", "l", "." },
+                    { "z", "x", "c", "v", "b", "n", "m", "-", "Limpiar", "⌫" },
+                    { "_", ":", "/", "@", "#", "%", "&", "?", "=", "+" },
+                    { "!", "$", "(", ")", "[", "]", "{", "}", ",", ";" }
+                };
             for (String[] keys : rows) {
                 LinearLayout row = new LinearLayout(getActivity());
                 row.setOrientation(LinearLayout.HORIZONTAL);
                 for (String key : keys) {
                     Button button = new Button(getActivity());
                     button.setText(key);
-                    button.setTextSize(20);
+                    button.setTextSize("number".equals(kind) ? 20 : 16);
                     button.setOnClickListener(view -> {
                         String current = editor.getText().toString();
                         if ("⌫".equals(key)) {
                             if (!current.isEmpty()) editor.setText(current.substring(0, current.length() - 1));
                         } else if ("Limpiar".equals(key)) {
                             editor.setText("");
-                        } else if (!".".equals(key) || !current.contains(".")) {
+                        } else {
                             editor.setText(current + key);
                         }
                     });

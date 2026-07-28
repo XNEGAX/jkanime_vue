@@ -13,7 +13,6 @@
       <div v-if="message" :class="['tv-status', { 'tv-status--error': isError }]">{{ message }}</div>
       <div class="tv-actions">
         <button class="tv-button" data-tv-focus :disabled="saving" type="submit">{{ saving ? 'Probando…' : 'Guardar y probar' }}</button>
-        <button class="tv-button tv-button--secondary" data-tv-focus type="button" @click="router.push('/')">Volver</button>
       </div>
     </form>
     <aside class="tv-server-preview"><span>La TV se conectará a</span><strong>{{ preview || 'Configura una IP y puerto' }}</strong><small>Emulador: 10.0.2.2 · TV física: IP local del computador. Puerto: 8000.</small></aside>

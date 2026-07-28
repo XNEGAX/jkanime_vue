@@ -1,7 +1,7 @@
 <template>
   <article class="tv-card" data-tv-focus tabindex="0" @click="$emit('select')">
     <div class="tv-card-image">
-      <img v-if="image" :src="image" :alt="title">
+      <img v-if="resolvedImage" :src="resolvedImage" :alt="title">
       <div v-else class="tv-card-placeholder">AW</div>
       <span v-if="badge" :class="['tv-card-badge', { 'tv-card-badge--yellow': badgeTone === 'yellow' }]">{{ badge }}</span>
       <div v-if="progress != null" class="tv-card-progress"><span :style="{ width: progress + '%' }"></span></div>
@@ -12,7 +12,10 @@
 </template>
 
 <script setup>
-defineProps({
+import { computed } from 'vue'
+import { getMediaUrl } from '../../src/api'
+
+const props = defineProps({
   image: String,
   title: { type: String, required: true },
   subtitle: String,
@@ -20,5 +23,6 @@ defineProps({
   badgeTone: String,
   progress: Number,
 })
+const resolvedImage = computed(() => getMediaUrl(props.image))
 defineEmits(['select'])
 </script>

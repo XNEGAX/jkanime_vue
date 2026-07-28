@@ -87,12 +87,20 @@ function latestBadge(episode) {
 }
 async function selectEpisode(ep) {
   if (!ep.capitulo_id) return ep.serie_id ? openSeries(ep.serie_id) : null
+  if (ep.archivo_existe && ep.serie_id) return openSeries(ep.serie_id)
   error.value = ''
   try {
     const { data } = await verificarCapitulo(ep.capitulo_id)
-    if (data.valido) { playerId.value = ep.capitulo_id; return }
+    if (data.valido) {
+      if (ep.serie_id) openSeries(ep.serie_id)
+      else playerId.value = ep.capitulo_id
+      return
+    }
     const response = await descargarCapitulo(ep.capitulo_id)
-    if (response.data.skip) playerId.value = ep.capitulo_id
+    if (response.data.skip) {
+      if (ep.serie_id) openSeries(ep.serie_id)
+      else playerId.value = ep.capitulo_id
+    }
     else if (response.data.task_id) downloads.addDownload(response.data.task_id, ep.capitulo_id, ep.nombre, ep.episodio, () => { ep.archivo_existe = true })
   } catch (e) {
     const detail = e.response?.data?.error || e.response?.data?.detail || e.message

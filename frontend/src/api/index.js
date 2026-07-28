@@ -36,6 +36,14 @@ export function getApiBaseUrl() {
   return configStore.baseUrl ? `${configStore.baseUrl}/api` : '/api'
 }
 
+export function getMediaUrl(path) {
+  if (!path) return ''
+  if (/^(https?:|data:|blob:)/i.test(path)) return path
+  const configStore = useConfigStore()
+  const base = configStore.baseUrl || window.location.origin
+  return new URL(path, `${base}/`).toString()
+}
+
 export function getSeries(search = '') {
   const params = search ? { search } : {}
   return api.get('/series/', { params })

@@ -1,7 +1,6 @@
 <template>
   <div class="tv-player-overlay">
     <header class="tv-player-header" :class="{ hidden: !controlsVisible }">
-      <button class="tv-button tv-button--secondary" data-tv-focus @click="close">← Volver</button>
       <div v-if="chapter">
         <strong>{{ chapter.serie_nombre }}</strong>
         <span>Episodio {{ chapter.numero }}</span>
