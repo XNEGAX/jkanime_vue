@@ -1,7 +1,7 @@
 <template>
   <div>
     <header class="tv-page-header"><div><h1>Series</h1><p>Catálogo completo</p></div></header>
-    <div class="tv-search"><input ref="searchInput" v-model="query" class="tv-input" data-tv-focus :readonly="!searchEditing" placeholder="Buscar una serie…" @click="activateSearch" @blur="searchEditing = false" @input="scheduleSearch"></div>
+    <div class="tv-search"><input ref="searchInput" v-model="query" :class="['tv-input', { 'tv-input--editing': searchEditing }]" data-tv-focus readonly placeholder="Buscar una serie…" @click="activateSearch" @keydown.enter.stop.prevent="activateSearch"></div>
     <div v-if="loading" class="tv-loading"><span class="tv-spinner"></span></div>
     <div v-else-if="error" class="tv-status tv-status--error">{{ error }}</div>
     <div v-else-if="!series.length" class="tv-empty">No se encontraron series</div>
@@ -17,7 +17,7 @@ import { useRouter } from 'vue-router'
 import { getSeries } from '../../src/api'
 import { useSpatialNavigation, focusFirst } from '../composables/useSpatialNavigation'
 import TvCard from '../components/TvCard.vue'
-import { showTvKeyboard } from '../plugins/tvKeyboard'
+import { editTvValue } from '../plugins/tvKeyboard'
 const router = useRouter()
 const query = ref('')
 const series = ref([])
@@ -26,7 +26,6 @@ const error = ref('')
 const searchInput = ref(null)
 const searchEditing = ref(false)
 let initialLoad = true
-let timer
 async function load() {
   loading.value = true; error.value = ''
   try { series.value = (await getSeries(query.value.trim())).data }
@@ -42,13 +41,15 @@ async function load() {
 async function activateSearch() {
   if (searchEditing.value) return
   searchEditing.value = true
-  await nextTick()
-  searchInput.value?.focus()
-  await showTvKeyboard()
+  const result = await editTvValue({ value: query.value, kind: 'text', title: 'Buscar una serie' })
+  if (!result.cancelled) {
+    query.value = result.value
+    await load()
+  }
+  searchEditing.value = false
   await nextTick()
   searchInput.value?.focus({ preventScroll: true })
 }
-function scheduleSearch() { clearTimeout(timer); timer = setTimeout(load, 350) }
 function open(id) { router.push({ name: 'tv-chapters', params: { id } }) }
 onMounted(load)
 useSpatialNavigation({ onBack: () => router.push('/') })
