@@ -2,7 +2,6 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
-    path('series/', views.api_series, name='api_series'),
     path('series/favoritos/', views.api_series_favoritos, name='api_series_favoritos'),
     path('series/<int:serie_id>/favorito/', views.api_toggle_favorito, name='api_toggle_favorito'),
     path('series/<int:serie_id>/eliminar/', views.api_eliminar_serie, name='api_eliminar_serie'),

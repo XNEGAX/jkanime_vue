@@ -292,6 +292,12 @@ function navegar(id) {
 
 function cerrar() {
   guardarProgresoAhora()
+  const v = videoEl.value
+  if (v) {
+    v.pause()
+    v.src = ''
+    v.load()
+  }
   emit('close')
 }
 
@@ -310,6 +316,12 @@ onBeforeUnmount(() => {
   document.body.style.overflow = ''
   window.removeEventListener('beforeunload', guardarProgresoBeacon)
   guardarProgresoAhora()
+  const v = videoEl.value
+  if (v) {
+    v.pause()
+    v.src = ''
+    v.load()
+  }
 })
 </script>
 

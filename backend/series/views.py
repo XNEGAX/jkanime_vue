@@ -40,25 +40,24 @@ logger = logging.getLogger(__name__)
 #  Series
 # ===========================================================================
 
-
-@api_view(['GET'])
-def api_series(request):
-    """Lista todas las series, opcionalmente filtradas por busqueda."""
-    search = request.query_params.get('search', '').strip()
-    series = Serie.objects.prefetch_related('capitulos').all()
-    if search:
-        series = series.filter(nombre__icontains=search)
-    serializer = SerieListSerializer(series, many=True, context={'request': request})
-    return Response(serializer.data)
-
-
 @api_view(['GET'])
 def api_series_favoritos(request):
-    """Lista series favoritas, opcionalmente filtradas por estado."""
+    """Lista series favoritas, opcionalmente filtradas por estado, dia de emision o letra inicial."""
+    from django.db.models import Q
+
     series = Serie.objects.filter(favorito=True)
     estado = request.query_params.get('estado', '').strip()
     if estado:
         series = series.filter(estado=estado)
+    dia = request.query_params.get('dia', '').strip()
+    if dia:
+        series = series.filter(dia_emision=dia)
+    letras = request.query_params.get('letras', '').strip()
+    if letras:
+        filtro = Q()
+        for letra in letras:
+            filtro |= Q(nombre__istartswith=letra)
+        series = series.filter(filtro)
     serializer = SerieListSerializer(series, many=True, context={'request': request})
     return Response(serializer.data)
 
@@ -701,25 +700,38 @@ def api_ultimos_episodios(request):
             if serie:
                 # Reemplazar imagen scraping por portada local
                 if serie.portada:
-                    ep["imagen"] = serie.portada.url
+                    ep["imagen"] = request.build_absolute_uri(serie.portada.url)
                 ep["serie_id"] = serie.id
 
                 # Validar si el episodio existe en BD, si no -> crearlo
                 ep_num_str = ep.get("episodio", "")
                 capitulo = None
+                ep_num = None
+
+                # Intentar desde el badge primero
                 if ep_num_str:
                     try:
                         ep_num = int(ep_num_str)
                     except (ValueError, TypeError):
                         ep_num = None
-                    if ep_num is not None:
-                        capitulo = serie.capitulos.filter(numero=ep_num).first()
-                        if not capitulo:
-                            capitulo = Capitulo.objects.create(
-                                serie=serie,
-                                numero=ep_num,
-                                url_fuente=url,
-                            )
+
+                # Fallback: extraer numero desde la URL (OVAs no ponen numero en el badge)
+                if ep_num is None:
+                    url_parts = url.rstrip("/").split("/")
+                    last_segment = url_parts[-1] if len(url_parts) >= 5 else ""
+                    try:
+                        ep_num = int(last_segment)
+                    except (ValueError, TypeError):
+                        ep_num = None
+
+                if ep_num is not None:
+                    capitulo = serie.capitulos.filter(numero=ep_num).first()
+                    if not capitulo:
+                        capitulo = Capitulo.objects.create(
+                            serie=serie,
+                            numero=ep_num,
+                            url_fuente=url,
+                        )
                 ep["capitulo_id"] = capitulo.id if capitulo else None
                 ep["archivo_existe"] = capitulo.archivo_existe if capitulo else False
             else:

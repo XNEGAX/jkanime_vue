@@ -51,7 +51,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="cap in capitulos" :key="cap.id">
+          <tr v-for="cap in capitulos" :key="cap.id" tabindex="0" role="button" @keydown.enter="handleClick(cap)" @keydown.space.prevent="handleClick(cap)">
             <td><strong>{{ cap.numero }}</strong></td>
             <td>
               {{ cap.nombre_archivo }}
@@ -416,6 +416,12 @@ async function descargarTodos() {
 .date-cell {
   color: var(--text-muted);
   font-size: 0.8rem;
+}
+
+tr:focus-visible {
+  outline: 2px solid var(--accent-cta);
+  outline-offset: -2px;
+  background: rgba(0, 83, 156, 0.04);
 }
 
 .btn-downloading {

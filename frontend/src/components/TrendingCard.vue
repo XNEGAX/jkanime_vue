@@ -1,5 +1,5 @@
 <template>
-  <div class="trending-card" @click="$emit('click')">
+  <div class="trending-card" tabindex="0" role="button" @click="$emit('click')" @keydown.enter="$emit('click')" @keydown.space.prevent="$emit('click')">
     <div class="trending-card-img-wrap">
       <img
         v-if="image"
@@ -55,11 +55,18 @@ defineEmits(['click', 'toggle-fav'])
   cursor: pointer;
   transition: transform 0.2s, box-shadow 0.2s;
   position: relative;
+  outline: none;
 }
 
 .trending-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 83, 156, 0.15);
+}
+
+.trending-card:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: 0 0 0 3px var(--bg-primary), 0 0 0 5px var(--accent-cta);
+  border-radius: 10px;
 }
 
 .trending-card-img-wrap {

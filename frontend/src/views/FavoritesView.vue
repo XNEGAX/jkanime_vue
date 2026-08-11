@@ -100,6 +100,28 @@
             />
           </TrendingGrid>
         </div>
+        <div
+          v-if="enEmisionSinDia.length"
+          class="day-group"
+        >
+          <div class="day-header">
+            <span class="day-name">Sin día definido</span>
+            <span class="day-count">{{ enEmisionSinDia.length }}</span>
+          </div>
+          <TrendingGrid>
+            <TrendingCard
+              v-for="serie in enEmisionSinDia"
+              :key="serie.id"
+              :image="serie.portada_url"
+              :title="serie.nombre"
+              :subtitle="serie.capitulos_count + ' capítulos'"
+              show-fav
+              :is-favorite="true"
+              @click="router.push({ name: 'chapters', params: { id: serie.id } })"
+              @toggle-fav="quitarFavorito(serie, 'en_emision')"
+            />
+          </TrendingGrid>
+        </div>
       </template>
     </template>
 
@@ -179,6 +201,15 @@ const DIAS_ORDER = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado
 
 const TAB_ORDER = ['Animes', 'Donghuas', 'Ovas']
 
+const GRUPOS_LETRA = [
+  { label: 'A-D', letras: 'ABCD' },
+  { label: 'E-H', letras: 'EFGH' },
+  { label: 'I-L', letras: 'IJKL' },
+  { label: 'M-P', letras: 'MNOP' },
+  { label: 'Q-T', letras: 'QRST' },
+  { label: 'U-Z', letras: 'UVWXYZ' },
+]
+
 const router = useRouter()
 const favStore = useFavoritesStore()
 const dlStore = useDownloadStore()
@@ -208,8 +239,10 @@ const loadingConcluidos = ref(false)
 const playerCapituloId = ref(null)
 
 const ultimosEpisodios = ref([])
-const seriesEnEmision = ref([])
-const seriesConcluidas = ref([])
+const enEmisionCache = ref({})
+const concluidoCache = ref({})
+const seriesEnEmision = computed(() => Object.values(enEmisionCache.value).flat())
+const seriesConcluidas = computed(() => Object.values(concluidoCache.value).flat())
 
 // --- Tab 1: agrupar por tab ---
 
@@ -236,6 +269,20 @@ const enEmisionFiltradas = computed(() => {
   return seriesEnEmision.value.filter(s => s.nombre.toLowerCase().includes(q))
 })
 
+const enEmisionPorDia = computed(() => {
+  const map = {}
+  for (const dia of DIAS_ORDER) map[dia] = []
+  for (const s of enEmisionFiltradas.value) {
+    const dia = s.dia_emision
+    if (dia && map[dia]) map[dia].push(s)
+  }
+  return map
+})
+
+const enEmisionSinDia = computed(() => {
+  return enEmisionFiltradas.value.filter(s => !s.dia_emision)
+})
+
 const diasDesdeHoy = computed(() => {
   const jsDay = new Date().getDay()
   // Convertir JS day (0=domingo) a indice DIAS_ORDER (0=lunes)
@@ -247,15 +294,23 @@ const diasDesdeHoy = computed(() => {
   return orden
 })
 
-const enEmisionPorDia = computed(() => {
-  const map = {}
-  for (const dia of DIAS_ORDER) map[dia] = []
-  for (const s of enEmisionFiltradas.value) {
-    const dia = s.dia_emision
-    if (dia && map[dia]) map[dia].push(s)
+async function loadEnEmision() {
+  loadingEnEmision.value = true
+  try {
+    for (const dia of diasDesdeHoy.value) {
+      const { data } = await getFavoritosByEstado('en_emision', dia)
+      enEmisionCache.value[dia] = data
+    }
+    const { data: sinDia } = await getFavoritosByEstado('en_emision')
+    enEmisionCache.value['sin_dia'] = sinDia.filter(s => !s.dia_emision)
+    favStore.loadFromSeries(seriesEnEmision.value)
+  } catch (e) {
+    console.error('Error loading en emisión:', e)
+  } finally {
+    loadingEnEmision.value = false
+    loadedTabs.value['en_emision'] = true
   }
-  return map
-})
+}
 
 // --- Tab 3: concluidos ---
 
@@ -277,6 +332,22 @@ const concluidasPorLetra = computed(() => {
   }
   return Object.keys(map).sort().map(l => ({ letra: l, series: map[l] }))
 })
+
+async function loadConcluidos() {
+  loadingConcluidos.value = true
+  try {
+    for (const grupo of GRUPOS_LETRA) {
+      const { data } = await getFavoritosByEstado('concluido', '', grupo.letras)
+      concluidoCache.value[grupo.label] = data
+    }
+    favStore.loadFromSeries(seriesConcluidas.value)
+  } catch (e) {
+    console.error('Error loading concluidos:', e)
+  } finally {
+    loadingConcluidos.value = false
+    loadedTabs.value['concluido'] = true
+  }
+}
 
 function switchTab(tab) {
   activeTab.value = tab
@@ -320,29 +391,9 @@ async function loadTabData(tab) {
       loadedTabs.value[tab] = true
     }
   } else if (tab === 'en_emision') {
-    loadingEnEmision.value = true
-    try {
-      const { data } = await getFavoritosByEstado('en_emision')
-      seriesEnEmision.value = data
-      favStore.loadFromSeries(data)
-    } catch (e) {
-      console.error('Error loading en emisión:', e)
-    } finally {
-      loadingEnEmision.value = false
-      loadedTabs.value[tab] = true
-    }
+    await loadEnEmision()
   } else if (tab === 'concluido') {
-    loadingConcluidos.value = true
-    try {
-      const { data } = await getFavoritosByEstado('concluido')
-      seriesConcluidas.value = data
-      favStore.loadFromSeries(data)
-    } catch (e) {
-      console.error('Error loading concluidos:', e)
-    } finally {
-      loadingConcluidos.value = false
-      loadedTabs.value[tab] = true
-    }
+    await loadConcluidos()
   }
 }
 
@@ -392,9 +443,13 @@ async function quitarFavorito(serie, tabKey) {
   const result = await favStore.toggle(serie.id)
   if (result === false) {
     if (tabKey === 'en_emision') {
-      seriesEnEmision.value = seriesEnEmision.value.filter(s => s.id !== serie.id)
+      for (const dia of Object.keys(enEmisionCache.value)) {
+        enEmisionCache.value[dia] = (enEmisionCache.value[dia] || []).filter(s => s.id !== serie.id)
+      }
     } else if (tabKey === 'concluido') {
-      seriesConcluidas.value = seriesConcluidas.value.filter(s => s.id !== serie.id)
+      for (const grupo of Object.keys(concluidoCache.value)) {
+        concluidoCache.value[grupo] = (concluidoCache.value[grupo] || []).filter(s => s.id !== serie.id)
+      }
     }
   }
 }
@@ -496,6 +551,11 @@ watch(activeTab, () => {
   margin-bottom: -2px;
 }
 
+.tab-btn:focus-visible {
+  outline: 2px solid var(--accent-cta);
+  outline-offset: 2px;
+}
+
 .tab-btn:hover {
   color: var(--text-main);
 }
@@ -505,7 +565,7 @@ watch(activeTab, () => {
   border-bottom-color: var(--primary);
 }
 
-/* --- Day groups (Tab 2) --- */
+/* --- Day groups (Tab 2 y 3) --- */
 
 .day-group {
   margin-bottom: 24px;

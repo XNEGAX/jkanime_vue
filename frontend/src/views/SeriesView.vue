@@ -45,7 +45,11 @@
                 v-for="serie in grupo.series"
                 :key="serie.id"
                 class="serie-row"
+                tabindex="0"
+                role="button"
                 @click="router.push({ name: 'chapters', params: { id: serie.id } })"
+                @keydown.enter="router.push({ name: 'chapters', params: { id: serie.id } })"
+                @keydown.space.prevent="router.push({ name: 'chapters', params: { id: serie.id } })"
               >
                 <td>
                   <button
@@ -371,8 +375,14 @@ function capitalize(str) {
   font-weight: 600;
 }
 
-.serie-row { cursor: pointer; }
-.serie-row:hover .delete-btn { opacity: 1; }
+.serie-row { cursor: pointer; outline: none; }
+.serie-row:hover .delete-btn,
+.serie-row:focus-visible .delete-btn { opacity: 1; }
+.serie-row:focus-visible {
+  outline: 2px solid var(--accent-cta);
+  outline-offset: -2px;
+  background: rgba(0, 83, 156, 0.04);
+}
 .cover-img { width: 80px; height: 60px; object-fit: cover; border-radius: 4px; }
 .cover-placeholder {
   width: 80px; height: 60px; background: var(--border-light);
@@ -486,6 +496,7 @@ function capitalize(str) {
   padding: 6px 10px; cursor: pointer; font-size: 0.8rem; font-weight: 600;
   transition: all 0.2s;
 }
+.page-btn:focus-visible:not(:disabled) { outline: 2px solid var(--accent-cta); outline-offset: 2px; }
 .page-btn:hover:not(:disabled) { color: var(--primary); border-color: var(--primary); }
 .page-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
 .page-btn.today:not(.active) { border-color: var(--primary); color: var(--primary); }

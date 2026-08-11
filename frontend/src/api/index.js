@@ -133,6 +133,9 @@ export function getUltimosEpisodios() {
   return api.get('/ultimos-episodios/')
 }
 
-export function getFavoritosByEstado(estado) {
-  return api.get('/series/favoritos/', { params: { estado } })
+export function getFavoritosByEstado(estado, dia, letras) {
+  const params = { estado }
+  if (dia) params.dia = dia
+  if (letras) params.letras = letras
+  return api.get('/series/favoritos/', { params })
 }
