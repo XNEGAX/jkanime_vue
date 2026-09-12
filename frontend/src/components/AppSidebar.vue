@@ -8,6 +8,10 @@
       <span class="sidebar-icon">&#127968;</span>
       <span class="sidebar-label">Series</span>
     </router-link>
+    <router-link to="/admin" class="sidebar-link" :class="{ active: isActive('admin') }">
+      <span class="sidebar-icon">&#9881;</span>
+      <span class="sidebar-label">Admin</span>
+    </router-link>
   </aside>
 </template>
 
