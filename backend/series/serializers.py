@@ -95,3 +95,58 @@ class CapituloDetailSerializer(serializers.ModelSerializer):
     def get_siguiente_id(self, obj):
         cap = Capitulo.objects.filter(serie=obj.serie, numero__gt=obj.numero).order_by('numero').first()
         return cap.id if cap else None
+
+
+class SerieAdminSerializer(serializers.ModelSerializer):
+    portada_url = serializers.SerializerMethodField()
+    capitulos_count = serializers.SerializerMethodField()
+    descargados_count = serializers.SerializerMethodField()
+    latest_fecha = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Serie
+        fields = [
+            'id', 'nombre', 'anio', 'portada', 'portada_url', 'url', 'slug',
+            'favorito', 'estado', 'dia_emision', 'fuente', 'created_at',
+            'capitulos_count', 'descargados_count', 'latest_fecha',
+        ]
+        read_only_fields = [
+            'id', 'portada_url', 'slug', 'created_at',
+            'capitulos_count', 'descargados_count', 'latest_fecha',
+        ]
+
+    def get_portada_url(self, obj):
+        if obj.portada:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.portada.url)
+            return obj.portada.url
+        return None
+
+    def get_capitulos_count(self, obj):
+        return obj.capitulos.count()
+
+    def get_descargados_count(self, obj):
+        return obj.capitulos.filter(ruta_archivo__isnull=False).count()
+
+    def get_latest_fecha(self, obj):
+        latest = obj.capitulos.filter(
+            fecha_publicacion__isnull=False
+        ).order_by('-fecha_publicacion').values_list('fecha_publicacion', flat=True).first()
+        return latest.isoformat() if latest else None
+
+
+class CapituloAdminSerializer(serializers.ModelSerializer):
+    serie = serializers.PrimaryKeyRelatedField(queryset=Serie.objects.all())
+    serie_nombre = serializers.CharField(source='serie.nombre', read_only=True)
+    archivo_existe = serializers.BooleanField(read_only=True)
+    nombre_archivo = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = Capitulo
+        fields = [
+            'id', 'serie', 'serie_nombre', 'numero', 'fecha_publicacion',
+            'url_fuente', 'ruta_archivo', 'ultimo_segundo',
+            'archivo_existe', 'nombre_archivo',
+        ]
+        read_only_fields = ['id', 'serie_nombre', 'archivo_existe', 'nombre_archivo']

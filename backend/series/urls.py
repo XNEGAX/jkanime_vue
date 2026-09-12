@@ -2,6 +2,7 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    path('series/', views.api_series_list, name='api_series_list'),
     path('series/favoritos/', views.api_series_favoritos, name='api_series_favoritos'),
     path('series/<int:serie_id>/favorito/', views.api_toggle_favorito, name='api_toggle_favorito'),
     path('series/<int:serie_id>/eliminar/', views.api_eliminar_serie, name='api_eliminar_serie'),
@@ -11,6 +12,7 @@ urlpatterns = [
     path('series/agregar-url/', views.api_agregar_serie_url, name='api_agregar_serie_url'),
     path('series/<int:serie_id>/descargar-todos/', views.api_descargar_todos, name='api_descargar_todos'),
     path('series/<int:serie_id>/refrescar-portada/', views.api_refrescar_portada, name='api_refrescar_portada'),
+    path('capitulos/', views.api_capitulos_list, name='api_capitulos_list'),
     path('capitulos/<int:capitulo_id>/', views.api_capitulo_detail, name='api_capitulo_detail'),
     path('capitulos/<int:capitulo_id>/descargar/', views.api_descargar_capitulo, name='api_descargar_capitulo'),
     path('tareas/activas/', views.api_tareas_activas, name='api_tareas_activas'),

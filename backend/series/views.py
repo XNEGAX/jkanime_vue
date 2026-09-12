@@ -27,8 +27,10 @@ from .scrapers import get_scraper
 from . import task_runner
 from .models import Capitulo, Serie
 from .serializers import (
+    CapituloAdminSerializer,
     CapituloDetailSerializer,
     CapituloSerializer,
+    SerieAdminSerializer,
     SerieDetailSerializer,
     SerieListSerializer,
 )
@@ -74,6 +76,29 @@ def api_toggle_favorito(request, serie_id):
     return Response({'favorito': serie.favorito})
 
 
+def _borrar_archivos_serie(serie):
+    """Borra de disco los archivos de capitulos y la portada de una serie.
+
+    Returns:
+        list[str]: errores de borrado (vacio si no hubo).
+    """
+    errores = []
+    for cap in serie.capitulos.all():
+        if cap.ruta_archivo and os.path.isfile(cap.ruta_archivo):
+            try:
+                os.remove(cap.ruta_archivo)
+            except OSError as e:
+                errores.append(f'Error eliminando {cap.ruta_archivo}: {e}')
+
+    if serie.portada and os.path.isfile(serie.portada.path):
+        try:
+            serie.portada.delete(save=False)
+        except OSError as e:
+            errores.append(f'Error eliminando portada: {e}')
+
+    return errores
+
+
 @api_view(['DELETE'])
 def api_eliminar_serie(request, serie_id):
     """Elimina una serie, sus capitulos y archivos del disco."""
@@ -82,19 +107,7 @@ def api_eliminar_serie(request, serie_id):
     except Serie.DoesNotExist:
         return Response({'error': 'Serie no encontrada'}, status=status.HTTP_404_NOT_FOUND)
 
-    delete_errors = []
-    for cap in serie.capitulos.all():
-        if cap.ruta_archivo and os.path.isfile(cap.ruta_archivo):
-            try:
-                os.remove(cap.ruta_archivo)
-            except OSError as e:
-                delete_errors.append(f'Error eliminando {cap.ruta_archivo}: {e}')
-
-    if serie.portada and os.path.isfile(serie.portada.path):
-        try:
-            serie.portada.delete(save=False)
-        except OSError as e:
-            delete_errors.append(f'Error eliminando portada: {e}')
+    delete_errors = _borrar_archivos_serie(serie)
 
     serie.delete()
 
@@ -107,13 +120,69 @@ def api_eliminar_serie(request, serie_id):
     return Response({'mensaje': 'Serie eliminada correctamente'})
 
 
-@api_view(['GET'])
+_SERIE_ORDENES = {'nombre', '-nombre', 'anio', '-anio', 'created_at', '-created_at'}
+
+
+@api_view(['GET', 'POST'])
+def api_series_list(request):
+    """Lista de series (GET) y creacion (POST). Filtros via query params."""
+    if request.method == 'POST':
+        serializer = SerieAdminSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response({'error': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+    series = Serie.objects.prefetch_related('capitulos')
+
+    search = request.query_params.get('search', '').strip()
+    if search:
+        series = series.filter(nombre__icontains=search)
+    estado = request.query_params.get('estado', '').strip()
+    if estado:
+        series = series.filter(estado=estado)
+    dia = request.query_params.get('dia', '').strip()
+    if dia:
+        series = series.filter(dia_emision=dia)
+    fuente = request.query_params.get('fuente', '').strip()
+    if fuente:
+        series = series.filter(fuente=fuente)
+    favorito = request.query_params.get('favorito', '').strip().lower()
+    if favorito in ('true', 'false'):
+        series = series.filter(favorito=favorito == 'true')
+    orden = request.query_params.get('orden', '').strip()
+    if orden in _SERIE_ORDENES:
+        series = series.order_by(orden)
+
+    serializer = SerieAdminSerializer(series, many=True, context={'request': request})
+    return Response({'results': serializer.data})
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
 def api_serie_detail(request, serie_id):
-    """Detalle de una serie con sus capitulos."""
+    """Detalle de una serie. PUT/PATCH actualizan, DELETE elimina serie + archivos."""
     try:
         serie = Serie.objects.prefetch_related('capitulos').get(id=serie_id)
     except Serie.DoesNotExist:
         return Response({'error': 'Serie no encontrada'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'DELETE':
+        _borrar_archivos_serie(serie)
+        serie.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    if request.method in ('PUT', 'PATCH'):
+        serializer = SerieAdminSerializer(
+            serie,
+            data=request.data,
+            partial=request.method == 'PATCH',
+            context={'request': request},
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response({'error': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
     serializer = SerieDetailSerializer(serie, context={'request': request})
     return Response(serializer.data)
 
@@ -181,13 +250,50 @@ def api_capitulos(request, serie_id):
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@api_view(['GET'])
+@api_view(['GET', 'POST'])
+def api_capitulos_list(request):
+    """Lista de capitulos (GET) y creacion (POST). Filtro opcional por serie."""
+    if request.method == 'POST':
+        serializer = CapituloAdminSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response({'error': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+    capitulos = Capitulo.objects.select_related('serie')
+    serie_id = request.query_params.get('serie', '').strip()
+    if serie_id:
+        capitulos = capitulos.filter(serie_id=serie_id)
+    capitulos = capitulos.order_by('serie', 'numero')
+
+    serializer = CapituloAdminSerializer(capitulos, many=True)
+    return Response({'results': serializer.data})
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
 def api_capitulo_detail(request, capitulo_id):
-    """Detalle de un capitulo."""
+    """Detalle de un capitulo. PUT/PATCH actualizan, DELETE borra registro + archivo."""
     try:
         cap = Capitulo.objects.select_related('serie').get(id=capitulo_id)
     except Capitulo.DoesNotExist:
         return Response({'error': 'Capitulo no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'DELETE':
+        if cap.ruta_archivo and os.path.isfile(cap.ruta_archivo):
+            try:
+                os.remove(cap.ruta_archivo)
+            except OSError as e:
+                logger.error(f"Error eliminando archivo {cap.ruta_archivo}: {e}")
+        cap.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    if request.method in ('PUT', 'PATCH'):
+        serializer = CapituloAdminSerializer(cap, data=request.data, partial=request.method == 'PATCH')
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response({'error': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
     serializer = CapituloDetailSerializer(cap)
     return Response(serializer.data)
 
