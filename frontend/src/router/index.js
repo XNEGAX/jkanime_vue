@@ -5,6 +5,8 @@ import ChaptersView from '../views/ChaptersView.vue'
 const routes = [
   { path: '/', name: 'favorites', component: FavoritesView },
   { path: '/serie/:id', name: 'chapters', component: ChaptersView },
+  { path: '/series', name: 'series', component: () => import('../views/SeriesView.vue') },
+  { path: '/admin', name: 'admin', component: () => import('../views/AdminView.vue') },
 ]
 
 const router = createRouter({

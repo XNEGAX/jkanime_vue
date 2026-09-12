@@ -139,3 +139,58 @@ export function getFavoritosByEstado(estado, dia, letras) {
   if (letras) params.letras = letras
   return api.get('/series/favoritos/', { params })
 }
+
+// --- Admin CRUD ---
+
+function esMultipart(data) {
+  if (data instanceof FormData) return true
+  if (!data || typeof data !== 'object') return false
+  return Object.values(data).some((v) => v instanceof File || v instanceof Blob)
+}
+
+function toRequestBody(data) {
+  if (!esMultipart(data)) return data
+  if (data instanceof FormData) return data
+  const fd = new FormData()
+  for (const [key, value] of Object.entries(data)) {
+    if (value === null || value === undefined) continue
+    if (value && typeof value === 'object' && !(value instanceof File) && !(value instanceof Blob)) {
+      fd.append(key, JSON.stringify(value))
+    } else {
+      fd.append(key, value)
+    }
+  }
+  return fd
+}
+
+export function getAdminSeries(params = {}) {
+  return api.get('/series/', { params })
+}
+
+export function crearSerie(data) {
+  return api.post('/series/', toRequestBody(data))
+}
+
+export function actualizarSerie(id, data) {
+  return api.patch(`/series/${id}/`, toRequestBody(data))
+}
+
+export function eliminarSerieAdmin(id) {
+  return api.delete(`/series/${id}/`)
+}
+
+export function getAdminCapitulos(params = {}) {
+  return api.get('/capitulos/', { params })
+}
+
+export function crearCapitulo(data) {
+  return api.post('/capitulos/', toRequestBody(data))
+}
+
+export function actualizarCapitulo(id, data) {
+  return api.patch(`/capitulos/${id}/`, toRequestBody(data))
+}
+
+export function eliminarCapitulo(id) {
+  return api.delete(`/capitulos/${id}/`)
+}

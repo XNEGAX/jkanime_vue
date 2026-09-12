@@ -143,6 +143,10 @@ const DIA_ORDEN = ['domingo', 'sabado', 'viernes', 'jueves', 'miercoles', 'marte
 const DIA_LABELS = { domingo: 'Dom', sabado: 'Sab', viernes: 'Vie', jueves: 'Jue', miercoles: 'Mie', martes: 'Mar', lunes: 'Lun', sin_dia: 'Sin dia' }
 const DOS_SEMANAS = 14 * 24 * 60 * 60 * 1000
 
+function toList(data) {
+  return Array.isArray(data) ? data : (data?.results || [])
+}
+
 const hoy = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'][new Date().getDay()]
 
 const seriesVisibles = computed(() => {
@@ -228,8 +232,8 @@ async function cargarSeries(search = '') {
   loading.value = true
   try {
     const { data } = await getSeries(search)
-    series.value = data
-    favStore.loadFromSeries(data)
+    series.value = toList(data)
+    favStore.loadFromSeries(series.value)
   } catch (e) {
     mensaje.value = 'Error cargando series: ' + e.message
     mensajeTipo.value = 'error'
@@ -270,8 +274,8 @@ function pollVerificacion(taskId) {
         verificarActualizadas.value = data.actualizadas || 0
         if (data.nuevas > 0 || data.actualizadas > 0) {
           const { data: updated } = await getSeries(searchQuery.value)
-          series.value = updated
-          favStore.loadFromSeries(updated)
+          series.value = toList(updated)
+          favStore.loadFromSeries(series.value)
         }
       } else if (data.state === 'FAILURE' || data.state === 'NONE') {
         verificando.value = false
