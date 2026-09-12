@@ -9,6 +9,7 @@ import hashlib
 import logging
 import os
 import re
+import shutil
 from io import BytesIO
 from pathlib import Path
 
@@ -95,6 +96,14 @@ def _borrar_archivos_serie(serie):
             serie.portada.delete(save=False)
         except OSError as e:
             errores.append(f'Error eliminando portada: {e}')
+
+    # Eliminar la carpeta de descargas de la serie y cualquier archivo restante (.part, etc.)
+    serie_dir = Path(settings.DOWNLOAD_DIR) / serie.slug
+    if serie_dir.exists() and serie_dir.is_dir():
+        try:
+            shutil.rmtree(serie_dir)
+        except OSError as e:
+            errores.append(f'Error eliminando carpeta {serie_dir}: {e}')
 
     return errores
 
@@ -284,6 +293,14 @@ def api_capitulo_detail(request, capitulo_id):
                 os.remove(cap.ruta_archivo)
             except OSError as e:
                 logger.error(f"Error eliminando archivo {cap.ruta_archivo}: {e}")
+        # Limpiar la carpeta del capitulo si quedo vacia (best effort)
+        if cap.ruta_archivo:
+            try:
+                parent = Path(cap.ruta_archivo).parent
+                if parent.exists() and parent.is_dir():
+                    parent.rmdir()
+            except OSError:
+                pass
         cap.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
