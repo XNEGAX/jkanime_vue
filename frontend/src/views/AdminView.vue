@@ -46,6 +46,11 @@
           <option value="jkanime">jkanime</option>
           <option value="latanime">latanime</option>
         </select>
+        <select v-model="filtroFavorito" class="filtro-select" @change="cargarSeries">
+          <option value="">Favorito: todos</option>
+          <option value="true">Sí</option>
+          <option value="false">No</option>
+        </select>
         <select v-model="filtroOrden" class="filtro-select" @change="cargarSeries">
           <option value="nombre">Orden: Nombre</option>
           <option value="-nombre">Orden: Nombre (Z-A)</option>
@@ -53,7 +58,7 @@
           <option value="-anio">Orden: Año (desc)</option>
           <option value="-created_at">Orden: Recientes</option>
         </select>
-        <button class="btn btn-primary btn-sm" @click="abrirNuevaSerie">+ Nueva serie</button>
+        <button class="btn btn-primary btn-sm" @click="abrirModalUrl">+ Agregar por URL</button>
       </div>
 
       <div v-if="loadingSeries && !series.length" class="loading">
@@ -103,7 +108,7 @@
         </div>
         <div v-if="!series.length" class="empty-state">
           {{
-            busqueda || filtroEstado || filtroDia || filtroFuente || filtroOrden
+            busqueda || filtroEstado || filtroDia || filtroFuente || filtroFavorito || filtroOrden !== 'nombre'
               ? 'No se encontraron series con esos filtros'
               : 'No hay series registradas.'
           }}
@@ -192,16 +197,42 @@
       @confirm="confirmarEliminar"
       @cancel="confirmModal = null"
     />
+
+    <!-- Modal Agregar por URL -->
+    <Teleport to="body">
+      <div class="modal-overlay" v-if="showUrlModal" @click.self="cerrarModalUrl">
+        <div class="modal-box">
+          <h3>Agregar serie por URL</h3>
+          <p class="modal-desc">Pegá la URL de la serie (jkanime.net o latanime.org). Se crean capítulos y portada automáticamente.</p>
+          <input
+            v-model="urlInput"
+            type="text"
+            class="modal-input"
+            placeholder="https://jkanime.net/..."
+            @keydown.enter="agregarUrl"
+            ref="urlInputEl"
+          />
+          <div v-if="urlError" class="modal-error">{{ urlError }}</div>
+          <div class="modal-actions">
+            <button class="btn btn-secondary btn-sm" @click="cerrarModalUrl">Cancelar</button>
+            <button class="btn btn-primary btn-sm" @click="agregarUrl" :disabled="agregandoUrl || !urlInput.trim()">
+              {{ agregandoUrl ? 'Agregando...' : 'Agregar' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, nextTick, onMounted } from 'vue'
 import {
   getAdminSeries,
   getAdminCapitulos,
   eliminarSerieAdmin,
   eliminarCapitulo,
+  agregarSerieUrl,
 } from '../api'
 import AdminSerieForm from '../components/admin/AdminSerieForm.vue'
 import AdminCapituloForm from '../components/admin/AdminCapituloForm.vue'
@@ -266,6 +297,7 @@ const busqueda = ref('')
 const filtroEstado = ref('')
 const filtroDia = ref('')
 const filtroFuente = ref('')
+const filtroFavorito = ref('')
 const filtroOrden = ref('nombre')
 
 let debounceTimer = null
@@ -289,6 +321,7 @@ async function cargarSeries() {
     if (filtroEstado.value) params.estado = filtroEstado.value
     if (filtroDia.value) params.dia = filtroDia.value
     if (filtroFuente.value) params.fuente = filtroFuente.value
+    if (filtroFavorito.value) params.favorito = filtroFavorito.value
     if (filtroOrden.value) params.orden = filtroOrden.value
     const { data } = await getAdminSeries(params)
     series.value = toList(data)
@@ -353,8 +386,47 @@ async function refrescarTodo() {
 const serieModal = ref(null)
 const capituloModal = ref(null)
 
-function abrirNuevaSerie() {
-  serieModal.value = { mode: 'create' }
+// --- Agregar por URL ---
+const showUrlModal = ref(false)
+const urlInput = ref('')
+const urlError = ref('')
+const agregandoUrl = ref(false)
+const urlInputEl = ref(null)
+
+function abrirModalUrl() {
+  urlError.value = ''
+  urlInput.value = ''
+  showUrlModal.value = true
+  nextTick(() => urlInputEl.value?.focus())
+}
+
+function cerrarModalUrl() {
+  showUrlModal.value = false
+  urlError.value = ''
+  urlInput.value = ''
+}
+
+async function agregarUrl() {
+  const url = urlInput.value.trim()
+  if (!url || agregandoUrl.value) return
+  agregandoUrl.value = true
+  urlError.value = ''
+  try {
+    const { data } = await agregarSerieUrl(url)
+    if (data.serie_id) {
+      const nuevaId = data.serie_id
+      cerrarModalUrl()
+      setMensaje('ok', (data.nombre ? `"${data.nombre}" ` : 'Serie ') + 'agregada correctamente')
+      await Promise.all([cargarSeries(), cargarAllSeries()])
+      verCapitulos({ id: nuevaId })
+    } else {
+      urlError.value = data.message || 'Error al agregar la serie'
+    }
+  } catch (e) {
+    urlError.value = e.response?.data?.error || e.message || 'Error de conexión'
+  } finally {
+    agregandoUrl.value = false
+  }
 }
 
 function editarSerie(s) {
@@ -649,5 +721,67 @@ onMounted(() => {
 .btn-danger {
   background: var(--primary);
   color: white;
+}
+
+/* Modal URL */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.modal-box {
+  background: white;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 28px 32px;
+  width: 420px;
+  max-width: 90vw;
+}
+
+.modal-box h3 {
+  color: var(--primary);
+  margin-bottom: 8px;
+  font-size: 1.1rem;
+}
+
+.modal-desc {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-bottom: 16px;
+}
+
+.modal-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-main);
+  font-size: 0.85rem;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+}
+
+.modal-input:focus {
+  border-color: var(--primary);
+}
+
+.modal-error {
+  color: var(--primary);
+  font-size: 0.8rem;
+  margin-top: 8px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
 }
 </style>
