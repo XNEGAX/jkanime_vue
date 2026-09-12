@@ -2,7 +2,6 @@
   <ConfigScreen v-if="showConfigScreen" />
   <ConfigScreen :show="showSettings" @close="showSettings = false" v-else />
   <div v-if="!showConfigScreen" id="app">
-    <AppSidebar />
     <div class="app-main">
       <AppNavbar @toggle-settings="showSettings = !showSettings" />
       <div class="container">
@@ -19,7 +18,6 @@
 import { computed, ref } from 'vue'
 import { useConfigStore } from './stores/config'
 import AppNavbar from './components/AppNavbar.vue'
-import AppSidebar from './components/AppSidebar.vue'
 import DownloadDrawer from './components/DownloadDrawer.vue'
 import ConfigScreen from './components/ConfigScreen.vue'
 import { useDownloadStore } from './stores/downloads'
@@ -39,7 +37,6 @@ if (!showConfigScreen.value) {
 
 <style>
 .app-main {
-  margin-left: 60px;
   min-height: 100vh;
 }
 </style>

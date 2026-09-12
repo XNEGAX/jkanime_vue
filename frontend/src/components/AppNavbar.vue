@@ -18,9 +18,19 @@
       </div>
     </div>
     <div class="navbar-right">
-      <button class="nav-btn nav-btn-icon" @click="$emit('toggle-settings')" title="Configurar servidor">
-        &#9881;
-      </button>
+      <div class="user-menu" ref="userMenuRef">
+        <button class="nav-btn nav-btn-icon" @click="menuAbierto = !menuAbierto" title="Menú">
+          &#9881;
+        </button>
+        <div v-if="menuAbierto" class="dropdown">
+          <button class="dropdown-item" @click="abrirConfiguracion">
+            <span>&#9881;</span> Configuración
+          </button>
+          <button class="dropdown-item" @click="abrirAdmin">
+            <span>&#128736;</span> Administración
+          </button>
+        </div>
+      </div>
       <button class="nav-btn" @click="showUrlModal = true" title="Agregar serie por URL">
         + Agregar URL
       </button>
@@ -59,19 +69,42 @@
 </template>
 
 <script setup>
-import { ref, nextTick, watch } from 'vue'
+import { ref, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDownloadStore } from '../stores/downloads'
 import { agregarSerieUrl } from '../api'
 
 const store = useDownloadStore()
 const router = useRouter()
+const emit = defineEmits(['toggle-settings'])
 const searchQuery = ref('')
 const showUrlModal = ref(false)
 const urlInput = ref('')
 const urlError = ref('')
 const agregando = ref(false)
 const urlInputEl = ref(null)
+
+const menuAbierto = ref(false)
+const userMenuRef = ref(null)
+
+function cerrarMenuFuera(event) {
+  if (userMenuRef.value && !userMenuRef.value.contains(event.target)) {
+    menuAbierto.value = false
+  }
+}
+
+onMounted(() => document.addEventListener('click', cerrarMenuFuera))
+onBeforeUnmount(() => document.removeEventListener('click', cerrarMenuFuera))
+
+function abrirConfiguracion() {
+  menuAbierto.value = false
+  emit('toggle-settings')
+}
+
+function abrirAdmin() {
+  menuAbierto.value = false
+  router.push({ name: 'admin' })
+}
 
 let debounceTimer = null
 
@@ -127,7 +160,6 @@ async function agregarUrl() {
   }
 }
 
-defineEmits(['toggle-settings'])
 defineExpose({ searchQuery, setSearchValue })
 </script>
 
@@ -231,6 +263,43 @@ defineExpose({ searchQuery, setSearchValue })
   font-size: 1.2rem;
   padding: 6px 10px;
   line-height: 1;
+}
+
+.user-menu {
+  position: relative;
+}
+
+.dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  background: white;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  min-width: 210px;
+  z-index: 999;
+  overflow: hidden;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text-main);
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.dropdown-item:hover {
+  background: rgba(0, 83, 156, 0.06);
+  color: var(--primary);
 }
 
 .download-badge {
