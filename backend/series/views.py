@@ -10,13 +10,21 @@ import logging
 import os
 import re
 import shutil
+import time
 from io import BytesIO
 from pathlib import Path
 
 import requests
 from django.conf import settings
 from django.core.files.base import ContentFile
-from django.http import FileResponse, Http404, HttpResponseNotModified
+from django.db.models import Prefetch
+from django.http import (
+    FileResponse,
+    Http404,
+    HttpResponse,
+    HttpResponseNotModified,
+    StreamingHttpResponse,
+)
 from django.utils.dateparse import parse_datetime
 from django.utils.http import http_date
 from PIL import Image as PILImage
@@ -24,7 +32,10 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from .fuente import actualizar_estado_serie
+from .paths import serie_download_dir
 from .scrapers import get_scraper
+from .trending import sincronizar_trending
 from . import task_runner
 from .models import Capitulo, Serie
 from .serializers import (
@@ -45,7 +56,11 @@ logger = logging.getLogger(__name__)
 
 @api_view(['GET'])
 def api_series_favoritos(request):
-    """Lista series favoritas, opcionalmente filtradas por estado, dia de emision o letra inicial."""
+    """Lista series favoritas, opcionalmente filtradas por estado, dia de emision o letra inicial.
+
+    Lectura pura de BD: la revalidacion de estado/dia_emision la hace la tarea
+    en background `verificar-estados`, nunca este request.
+    """
     from django.db.models import Q
 
     series = Serie.objects.filter(favorito=True)
@@ -61,6 +76,7 @@ def api_series_favoritos(request):
         for letra in letras:
             filtro |= Q(nombre__istartswith=letra)
         series = series.filter(filtro)
+
     serializer = SerieListSerializer(series, many=True, context={'request': request})
     return Response(serializer.data)
 
@@ -98,7 +114,7 @@ def _borrar_archivos_serie(serie):
             errores.append(f'Error eliminando portada: {e}')
 
     # Eliminar la carpeta de descargas de la serie y cualquier archivo restante (.part, etc.)
-    serie_dir = Path(settings.DOWNLOAD_DIR) / serie.slug
+    serie_dir = serie_download_dir(serie.slug, serie.fuente)
     if serie_dir.exists() and serie_dir.is_dir():
         try:
             shutil.rmtree(serie_dir)
@@ -171,7 +187,13 @@ def api_series_list(request):
 def api_serie_detail(request, serie_id):
     """Detalle de una serie. PUT/PATCH actualizan, DELETE elimina serie + archivos."""
     try:
-        serie = Serie.objects.prefetch_related('capitulos').get(id=serie_id)
+        serie = (
+            Serie.objects
+            .prefetch_related(
+                Prefetch('capitulos', queryset=Capitulo.objects.select_related('serie'))
+            )
+            .get(id=serie_id)
+        )
     except Serie.DoesNotExist:
         return Response({'error': 'Serie no encontrada'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -230,21 +252,7 @@ def api_capitulos(request, serie_id):
             )
 
         # Actualizar estado y dia de emision desde la fuente
-        try:
-            info = s.get_series_info(serie.url)
-            if info:
-                changes = []
-                if info.get('estado') and info['estado'] != serie.estado:
-                    serie.estado = info['estado']
-                    changes.append('estado')
-                dia_scraped = info.get('dia_emision')
-                if dia_scraped and dia_scraped != serie.dia_emision:
-                    serie.dia_emision = dia_scraped
-                    changes.append('dia_emision')
-                if changes:
-                    serie.save(update_fields=changes)
-        except Exception:
-            pass
+        actualizar_estado_serie(serie)
 
         capitulos = serie.capitulos.select_related('serie').order_by('numero')
         serializer = CapituloSerializer(capitulos, many=True)
@@ -347,20 +355,29 @@ def api_descargar_capitulo(request, capitulo_id):
     except Capitulo.DoesNotExist:
         return Response({'error': 'Capitulo no encontrado'}, status=status.HTTP_404_NOT_FOUND)
 
-    if capitulo.archivo_existe:
+    ruta_existente = capitulo.ruta_archivo_real
+    if ruta_existente:
         # Validar que no este corrupto antes de saltar
         from .tasks import _validar_mp4
-        valido, razon = _validar_mp4(Path(capitulo.ruta_archivo))
+        valido, razon = _validar_mp4(Path(ruta_existente))
         if valido:
+            # Auto-sanado: si la ruta en BD estaba vacia pero el archivo estaba
+            # en la ruta canonica, se persiste para no volver a resolverla.
+            if capitulo.ruta_archivo != ruta_existente:
+                capitulo.ruta_archivo = ruta_existente
+                capitulo.save(update_fields=['ruta_archivo'])
             return Response({'status': 'ok', 'message': 'Ya existe', 'skip': True})
         # Archivo corrupto: eliminar y descargar de nuevo
         logger.warning(f"Archivo corrupto detectado en {capitulo.nombre_archivo}: {razon}")
         try:
-            os.remove(capitulo.ruta_archivo)
-        except OSError:
-            pass
-        capitulo.ruta_archivo = None
-        capitulo.save(update_fields=['ruta_archivo'])
+            os.remove(ruta_existente)
+        except OSError as e:
+            logger.error(f"No se pudo eliminar {ruta_existente}: {e}")
+        # Si el borrado fallo (archivo bloqueado) la ruta se conserva: la
+        # descarga igual lo sobreescribe porque usa os.replace.
+        if not os.path.isfile(ruta_existente):
+            capitulo.ruta_archivo = None
+            capitulo.save(update_fields=['ruta_archivo'])
 
     task_id = task_runner.enqueue_download(capitulo_id)
     return Response({
@@ -383,7 +400,22 @@ def api_descargar_todos(request, serie_id):
     except Serie.DoesNotExist:
         return Response({'error': 'Serie no encontrada'}, status=status.HTTP_404_NOT_FOUND)
 
-    capitulos_faltantes = [c for c in serie.capitulos.all() if not c.archivo_existe]
+    # OJO: `archivo_existe` solo dice "hay algo en disco con ese nombre". Un
+    # archivo puede existir y estar corrupto (los stubs de ~1.6 KB con la landing
+    # de Mega guardada como .mp4). Eso NO es una descarga valida. Filtrar por
+    # `not c.archivo_existe` dejaba esos capitulos afuera para siempre: el boton
+    # individual respondia "Ya existe" y este endpoint "No hay capitulos para
+    # descargar", asi que nunca se reparaban. Validamos igual que ese flujo.
+    from .tasks import _validar_mp4
+
+    # OJO: `ruta_archivo_real` devuelve `str | None` (no un Path), por eso hay que
+    # envolverlo: `_validar_mp4` llama a `.exists()` sobre el argumento.
+    from .tasks import _validar_mp4
+
+    capitulos_faltantes = [
+        c for c in Capitulo.objects.select_related('serie').filter(serie=serie)
+        if c.ruta_archivo_real is None or not _validar_mp4(Path(c.ruta_archivo_real))[0]
+    ]
     if not capitulos_faltantes:
         return Response({'status': 'ok', 'message': 'No hay capitulos para descargar'})
 
@@ -444,6 +476,99 @@ def api_verificar_series(request):
 
 
 # ===========================================================================
+#  Verificacion de estados (solo series en emision)
+# ===========================================================================
+
+
+@api_view(['GET', 'POST'])
+def api_verificar_estados(request):
+    """POST: lanza la revalidacion de estado en background. GET: estado de la tarea activa.
+
+    A diferencia de `api_verificar_series`, esta tarea NO scrapea el catalogo
+    completo: solo revalida estado/dia_emision de las series que ya estan en
+    `en_emision`, respetando el cooldown de REFRESH_ESTADO_HORAS.
+    """
+    from .task_runner import _estados_task_id
+
+    if request.method == 'GET':
+        tid = _estados_task_id
+        if not tid:
+            return Response({'state': 'NONE'})
+        task = task_runner.get_task(tid)
+        if not task:
+            return Response({'state': 'NONE'})
+        data = {'state': task.get('state', 'NONE'), **{k: v for k, v in task.items() if k not in ('task_id',)}}
+        resp = Response(data)
+        resp['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        return resp
+
+    # POST
+    tid = _estados_task_id
+    if tid:
+        task = task_runner.get_task(tid)
+        if task and task.get('state') in ('PENDING', 'PROGRESS'):
+            return Response({
+                'status': 'already_running',
+                'task_id': tid,
+                **{k: v for k, v in task.items() if k not in ('task_id',)},
+            })
+
+    new_tid = task_runner.enqueue_verificar_estados()
+    if not new_tid:
+        return Response({'status': 'already_running'})
+    return Response({'status': 'started', 'task_id': new_tid})
+
+
+# ===========================================================================
+#  Verificacion de trending (episodios nuevos)
+# ===========================================================================
+
+
+@api_view(['GET', 'POST'])
+def api_verificar_trending(request):
+    """POST: lanza el chequeo de episodios nuevos en background. GET: estado.
+
+    Corre el MISMO `trending.sincronizar_trending` que usa
+    `api_ultimos_episodios`, pero con scrape forzado: el endpoint lee lo que la
+    cache de 30 min tiene, y esta tarea existe justamente para no depender de
+    ese TTL. El frontend la dispara cada hora y con el boton manual.
+
+    El GET no lleva `Cache-Control: no-store` por capricho: el poll cada 2s
+    repetiria la respuesta si un proxy la cacheara, y `nuevos` volveria a
+    disparar el reload de la lista.
+    """
+    from .task_runner import _trending_task_id
+
+    if request.method == 'GET':
+        tid = _trending_task_id
+        if not tid:
+            return Response({'state': 'NONE'})
+        task = task_runner.get_task(tid)
+        if not task:
+            return Response({'state': 'NONE'})
+        data = {'state': task.get('state', 'NONE'), **{k: v for k, v in task.items() if k not in ('task_id',)}}
+        resp = Response(data)
+        resp['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        return resp
+
+    # POST
+    tid = _trending_task_id
+    if tid:
+        task = task_runner.get_task(tid)
+        if task and task.get('state') in ('PENDING', 'PROGRESS'):
+            return Response({
+                'status': 'already_running',
+                'task_id': tid,
+                **{k: v for k, v in task.items() if k not in ('task_id',)},
+            })
+
+    new_tid = task_runner.enqueue_verificar_trending()
+    if not new_tid:
+        return Response({'status': 'already_running'})
+    return Response({'status': 'started', 'task_id': new_tid})
+
+
+# ===========================================================================
 #  Agregar serie por URL
 # ===========================================================================
 
@@ -469,24 +594,61 @@ def api_agregar_serie_url(request):
         match = re.search(r'latanime\.org/(?:anime|ver)/([^/\s?#]+)', url)
         if match:
             slug = match.group(1)
+    elif re.search(r'hentaid\.tv', url):
+        fuente = 'hentaidtv'
+        # En hentaid.tv la serie vive bajo /ver/<slug>
+        match = re.search(r'hentaid\.tv/ver/([^/\s?#]+)', url)
+        if match:
+            slug = match.group(1)
+    elif re.search(r'animeflv\.[a-z]+', url, re.IGNORECASE):
+        fuente = 'animeflv'
+        # La URL canonica de la serie es /anime/<slug>. Tambien se acepta una
+        # URL de episodio (/ver/...): ahi el slug se resuelve desde el
+        # breadcrumb dentro del scraper, por eso no siempre sale de la URL.
+        match = re.search(r'animeflv\.[a-z]+/anime/([^/\s?#]+)', url, re.IGNORECASE)
+        if match:
+            slug = match.group(1)
+    elif re.search(r'youtube\.com/', url, re.IGNORECASE) or re.search(r'youtu\.be/', url, re.IGNORECASE):
+        # YouTube: playlist (serie) o video individual (1 capítulo)
+        fuente = 'youtube'
+        # Preferimos playlist si viene en la URL (watch?v=...&list=... o playlist?list=...)
+        playlist_match = re.search(r'[?&]list=([a-zA-Z0-9_-]+)', url)
+        if playlist_match:
+            slug = f"youtube-{playlist_match.group(1)}"
+        else:
+            vid_match = re.search(
+                r'(?:v=|youtu\.be/|/embed/|/shorts/|/live/)([a-zA-Z0-9_-]{11})',
+                url,
+            )
+            if vid_match:
+                slug = f"youtube-{vid_match.group(1)}"
+            else:
+                return Response({
+                    'error': 'No se pudo extraer el ID de video o playlist de la URL de YouTube'
+                }, status=status.HTTP_400_BAD_REQUEST)
     else:
         return Response({
-            'error': 'URL no válida. Debe ser de jkanime.net o latanime.org'
+            'error': 'URL no válida. Debe ser de jkanime.net, latanime.org, animeflv, hentaid.tv o YouTube'
         }, status=status.HTTP_400_BAD_REQUEST)
 
-    if not slug:
+    if not slug and fuente != 'animeflv':
         return Response({
             'error': 'No se pudo extraer el slug de la URL'
         }, status=status.HTTP_400_BAD_REQUEST)
 
     # Verificar si ya existe por slug (namespace por fuente para evitar colisiones)
-    if Serie.objects.filter(slug=slug, fuente=fuente).exists():
+    if slug and Serie.objects.filter(slug=slug, fuente=fuente).exists():
         serie = Serie.objects.get(slug=slug, fuente=fuente)
+        # Al (re)agregarla por URL se marca como favorita de inmediato.
+        if not serie.favorito:
+            serie.favorito = True
+            serie.save(update_fields=['favorito'])
         return Response({
             'status': 'ok',
-            'message': f'"{serie.nombre}" ya está en la lista',
+            'message': f'"{serie.nombre}" ya está en la lista (marcada como favorita)',
             'serie_id': serie.id,
             'existing': True,
+            'favorito': True,
         })
 
     s = get_scraper(fuente)
@@ -496,12 +658,33 @@ def api_agregar_serie_url(request):
             'error': 'No se pudo obtener info de la serie. Verifica la URL.'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    # Cuando la URL era de episodio, el slug recien se conoce ahora: se repite
+    # el chequeo de duplicados para no crear una segunda serie de la misma
+    # fuente.
+    if not slug:
+        existente = Serie.objects.filter(slug=info['slug'], fuente=fuente).first()
+        if existente:
+            if not existente.favorito:
+                existente.favorito = True
+                existente.save(update_fields=['favorito'])
+            return Response({
+                'status': 'ok',
+                'message': f'"{existente.nombre}" ya está en la lista (marcada como favorita)',
+                'serie_id': existente.id,
+                'existing': True,
+                'favorito': True,
+            })
+
     serie = Serie(
         nombre=info['nombre'],
-        url=f"{s.BASE_URL}/anime/{info['slug']}" if fuente == 'latanime' else f"{s.BASE_URL}/{info['slug']}/",
+        # Los scrapers que ya exponen una URL canonica (p. ej. YouTube, donde
+        # no hay SERIE_URL_TEMPLATE valido para un video suelto) la devuelven
+        # en `info['url']`; el resto sigue usando el template del scraper.
+        url=info.get('url') or s.SERIE_URL_TEMPLATE.format(base=s.BASE_URL, slug=info['slug']),
         slug=info['slug'],
         estado=info.get('estado', 'desconocido'),
         fuente=fuente,
+        favorito=True,
     )
 
     if info.get('cover_url'):
@@ -512,7 +695,7 @@ def api_agregar_serie_url(request):
                     'AppleWebKit/537.36 (KHTML, like Gecko) '
                     'Chrome/125.0.0.0 Safari/537.36'
                 ),
-                'Referer': 'https://latanime.org/',
+                'Referer': f'{s.BASE_URL}/',
             }
             resp = requests.get(info['cover_url'], timeout=30, headers=headers)
             if resp.status_code == 200:
@@ -541,10 +724,11 @@ def api_agregar_serie_url(request):
 
     return Response({
         'status': 'ok',
-        'message': f'Serie "{info["nombre"]}" agregada con {len(eps)} capítulos',
+        'message': f'Serie "{info["nombre"]}" agregada con {len(eps)} capítulos (favorita)',
         'serie_id': serie.id,
         'fuente': fuente,
         'capitulos': len(eps),
+        'favorito': True,
     })
 
 
@@ -643,35 +827,116 @@ def api_cancelar_tarea(request, task_id):
 # ===========================================================================
 
 
+def _parse_byte_range(range_header, file_size):
+    """Parsea el header `Range` de una sola peticion de bytes.
+
+    Devuelve la tupla (start, end) inclusiva, la cadena 'unsatisfiable' si el
+    rango es sintacticamente valido pero cae fuera del archivo, o None si no
+    hay rango aplicable (entonces se sirve el archivo completo).
+    """
+    if not range_header or not range_header.lower().startswith('bytes='):
+        return None
+
+    # Un <video> envia un unico rango; se ignora el resto si hay varios.
+    spec = range_header[len('bytes='):].split(',')[0].strip()
+    if '-' not in spec:
+        return None
+
+    start_s, end_s = spec.split('-', 1)
+    try:
+        if start_s == '':
+            # Forma sufijo: bytes=-N (ultimos N bytes).
+            n = int(end_s)
+            if n <= 0:
+                return 'unsatisfiable'
+            start = max(0, file_size - n)
+            end = file_size - 1
+        else:
+            start = int(start_s)
+            end = int(end_s) if end_s != '' else file_size - 1
+    except ValueError:
+        return None
+
+    if start >= file_size or start > end:
+        return 'unsatisfiable'
+    end = min(end, file_size - 1)
+    return (start, end)
+
+
+def _file_range_iterator(file_path, start, length, chunk_size=262144):
+    """Genera exactamente `length` bytes del archivo desde `start`, en bloques."""
+    remaining = length
+    with open(file_path, 'rb') as fh:
+        fh.seek(start)
+        while remaining > 0:
+            data = fh.read(min(chunk_size, remaining))
+            if not data:
+                break
+            remaining -= len(data)
+            yield data
+
+
 @api_view(['GET'])
 def api_servir_video(request, capitulo_id):
-    """Sirve el archivo .mp4 con streaming por rangos."""
+    """Sirve el .mp4 con soporte real de HTTP Range (206 Partial Content).
+
+    Sin esto el <video> pide un rango (seek o buffer) y recibe el archivo
+    entero con 200, lo que provoca rebuffering constante y conexiones cortadas.
+    """
     try:
         capitulo = Capitulo.objects.get(id=capitulo_id)
     except Capitulo.DoesNotExist:
         raise Http404
 
-    if not capitulo.ruta_archivo or not os.path.isfile(capitulo.ruta_archivo):
+    file_path = capitulo.ruta_archivo_real
+    if not file_path:
         raise Http404('Archivo no encontrado')
 
-    file_path = capitulo.ruta_archivo
     file_stat = os.stat(file_path)
+    file_size = file_stat.st_size
 
-    etag_raw = f"{file_stat.st_ino}-{file_stat.st_size}-{file_stat.st_mtime}"
+    etag_raw = f"{file_stat.st_ino}-{file_size}-{file_stat.st_mtime}"
     etag = f'"{hashlib.md5(etag_raw.encode()).hexdigest()}"'
 
     if_none_match = request.META.get('HTTP_IF_NONE_MATCH', '')
     if if_none_match == etag:
         return HttpResponseNotModified()
 
-    response = FileResponse(open(file_path, 'rb'), as_attachment=False)
-    response['Content-Type'] = 'video/mp4'
-    response['Content-Length'] = file_stat.st_size
-    response['Accept-Ranges'] = 'bytes'
-    response['ETag'] = etag
-    response['Cache-Control'] = 'public, max-age=86400'
-    response['Last-Modified'] = http_date(file_stat.st_mtime)
-    response['Content-Disposition'] = f'inline; filename="{capitulo.nombre_archivo}"'
+    common_headers = {
+        'Accept-Ranges': 'bytes',
+        'ETag': etag,
+        'Cache-Control': 'public, max-age=86400',
+        'Last-Modified': http_date(file_stat.st_mtime),
+        'Content-Disposition': f'inline; filename="{capitulo.nombre_archivo}"',
+    }
+
+    parsed = _parse_byte_range(request.META.get('HTTP_RANGE', ''), file_size)
+
+    if parsed == 'unsatisfiable':
+        response = HttpResponse(status=416)
+        response['Content-Range'] = f'bytes */{file_size}'
+        response['Accept-Ranges'] = 'bytes'
+        return response
+
+    if parsed:
+        start, end = parsed
+        length = end - start + 1
+        response = StreamingHttpResponse(
+            _file_range_iterator(file_path, start, length),
+            status=206,
+            content_type='video/mp4',
+        )
+        response['Content-Range'] = f'bytes {start}-{end}/{file_size}'
+        response['Content-Length'] = str(length)
+    else:
+        response = StreamingHttpResponse(
+            _file_range_iterator(file_path, 0, file_size),
+            content_type='video/mp4',
+        )
+        response['Content-Length'] = str(file_size)
+
+    for key, value in common_headers.items():
+        response[key] = value
     return response
 
 
@@ -688,7 +953,8 @@ def api_verificar_archivo(request, capitulo_id):
     except Capitulo.DoesNotExist:
         return Response({'error': 'Capitulo no encontrado'}, status=status.HTTP_404_NOT_FOUND)
 
-    if not capitulo.ruta_archivo or not os.path.isfile(capitulo.ruta_archivo):
+    file_path = capitulo.ruta_archivo_real
+    if not file_path:
         return Response({
             'status': 'no_file',
             'valido': False,
@@ -696,8 +962,8 @@ def api_verificar_archivo(request, capitulo_id):
         })
 
     from .tasks import _validar_mp4
-    valido, razon = _validar_mp4(Path(capitulo.ruta_archivo))
-    file_size = os.path.getsize(capitulo.ruta_archivo)
+    valido, razon = _validar_mp4(Path(file_path))
+    file_size = os.path.getsize(file_path)
 
     return Response({
         'status': 'ok' if valido else 'corrupto',
@@ -716,10 +982,11 @@ def api_reparar_capitulo(request, capitulo_id):
     except Capitulo.DoesNotExist:
         return Response({'error': 'Capitulo no encontrado'}, status=status.HTTP_404_NOT_FOUND)
 
-    # Si existe archivo, validarlo primero
-    if capitulo.ruta_archivo and os.path.isfile(capitulo.ruta_archivo):
+    # Si existe archivo (en ruta_archivo o en la ruta canonica), validarlo primero
+    ruta_existente = capitulo.ruta_archivo_real
+    if ruta_existente:
         from .tasks import _validar_mp4
-        valido, razon = _validar_mp4(Path(capitulo.ruta_archivo))
+        valido, razon = _validar_mp4(Path(ruta_existente))
         if valido:
             return Response({
                 'status': 'ok',
@@ -729,13 +996,18 @@ def api_reparar_capitulo(request, capitulo_id):
 
         # Eliminar archivo corrupto
         try:
-            os.remove(capitulo.ruta_archivo)
+            os.remove(ruta_existente)
         except OSError as e:
-            logger.error(f"Error eliminando archivo corrupto {capitulo.ruta_archivo}: {e}")
+            logger.error(f"Error eliminando archivo corrupto {ruta_existente}: {e}")
 
-    # Limpiar ruta en BD para que se considere no descargado
-    capitulo.ruta_archivo = None
-    capitulo.save(update_fields=['ruta_archivo'])
+    # Limpiar ruta en BD para que se considere no descargado.
+    # Si el archivo corrupto no se pudo borrar, se conserva la ruta: la
+    # re-descarga lo sobreescribe igual porque usa os.replace.
+    if ruta_existente and os.path.isfile(ruta_existente):
+        logger.warning(f"Archivo bloqueado, se conserva la ruta: {ruta_existente}")
+    else:
+        capitulo.ruta_archivo = None
+        capitulo.save(update_fields=['ruta_archivo'])
 
     # Iniciar nueva descarga
     task_id = task_runner.enqueue_download(capitulo_id)
@@ -757,108 +1029,28 @@ def api_reparar_capitulo(request, capitulo_id):
 def api_ultimos_episodios(request):
     """Devuelve los ultimos episodios en tendencia de JKanime.
 
-    Enriquece los datos del scraping:
-    - Si la serie no existe en BD, la crea (con portada del CDN).
-    - Reemplaza la imagen por la portada local si ya existia.
-    - Crea el capitulo en BD si no existe.
+    Toda la escritura en BD vive en `trending.sincronizar_trending`, que es la
+    misma que corre la tarea en background `verificar-trending`: asi el endpoint
+    y la tarea no pueden escribir distinto. Aca solo queda el armado de la
+    respuesta, que es lo unico que depende de la request:
+
+    - Reemplaza la imagen del scraping por la portada local (URL absoluta: la
+      ruta que deja el modulo es relativa).
+    - Embalsa el payload con la forma que el frontend ya consume.
+
+    El scraping entra por la cache de 30 min del trending; la tarea horaria y el
+    boton manual fuerzan scrape y llegan con lo mismo.
     """
     try:
-        s = get_scraper("jkanime")
-        trending = s.get_trending()
-
-        # Precargar series de jkanime existentes en BD (slug -> serie)
-        series_bd = {
-            serie.slug: serie
-            for serie in Serie.objects.filter(fuente="jkanime").prefetch_related("capitulos")
-        }
+        trending = get_scraper("jkanime").get_trending()
+        sincronizar_trending(trending)
 
         for ep in trending:
-            url = ep.get("url", "")
-            parts = url.rstrip("/").split("/")
-            slug = parts[3] if len(parts) >= 4 else ""
-
-            serie = series_bd.get(slug)
-            if not serie and slug:
-                # --- Crear serie nueva (patron de _run_verificar) ---
-                serie_url = f"{s.BASE_URL}/{slug}/"
-                serie = Serie(
-                    nombre=ep.get("nombre", slug.replace("-", " ").title()),
-                    url=serie_url,
-                    slug=slug,
-                    fuente="jkanime",
-                )
-                # Intentar portada del CDN
-                cdn_url = f"https://cdn.jkdesa.com/assets/images/animes/image/{slug}.jpg"
-                portada_ok = False
-                try:
-                    resp = requests.get(cdn_url, timeout=15)
-                    if resp.status_code == 200:
-                        img = PILImage.open(BytesIO(resp.content))
-                        buf = BytesIO()
-                        img.save(buf, format="JPEG")
-                        safe_name = slug[:50]
-                        serie.portada.save(
-                            f"{safe_name}.jpg", ContentFile(buf.getvalue()), save=False
-                        )
-                        portada_ok = True
-                except Exception as e:
-                    logger.warning(f"Error descargando portada CDN para {slug}: {e}")
-                # Fallback: portada del scraping
-                if not portada_ok and ep.get("imagen"):
-                    try:
-                        resp = requests.get(ep["imagen"], timeout=15)
-                        if resp.status_code == 200:
-                            img = PILImage.open(BytesIO(resp.content))
-                            buf = BytesIO()
-                            img.save(buf, format="JPEG")
-                            safe_name = slug[:50]
-                            serie.portada.save(
-                                f"{safe_name}.jpg", ContentFile(buf.getvalue()), save=False
-                            )
-                    except Exception as e:
-                        logger.warning(f"Error descargando portada scraping para {slug}: {e}")
-                serie.save()
-                series_bd[slug] = serie
-
-            if serie:
-                # Reemplazar imagen scraping por portada local
-                if serie.portada:
-                    ep["imagen"] = request.build_absolute_uri(serie.portada.url)
-                ep["serie_id"] = serie.id
-
-                # Validar si el episodio existe en BD, si no -> crearlo
-                ep_num_str = ep.get("episodio", "")
-                capitulo = None
-                ep_num = None
-
-                # Intentar desde el badge primero
-                if ep_num_str:
-                    try:
-                        ep_num = int(ep_num_str)
-                    except (ValueError, TypeError):
-                        ep_num = None
-
-                # Fallback: extraer numero desde la URL (OVAs no ponen numero en el badge)
-                if ep_num is None:
-                    url_parts = url.rstrip("/").split("/")
-                    last_segment = url_parts[-1] if len(url_parts) >= 5 else ""
-                    try:
-                        ep_num = int(last_segment)
-                    except (ValueError, TypeError):
-                        ep_num = None
-
-                if ep_num is not None:
-                    capitulo = serie.capitulos.filter(numero=ep_num).first()
-                    if not capitulo:
-                        capitulo = Capitulo.objects.create(
-                            serie=serie,
-                            numero=ep_num,
-                            url_fuente=url,
-                        )
-                ep["capitulo_id"] = capitulo.id if capitulo else None
-                ep["archivo_existe"] = capitulo.archivo_existe if capitulo else False
-            else:
-                ep["serie_id"] = None
+            # `portada_url` es relativa y la resuelve esta capa con el host de la
+            # request. Se saca del dict para que no viaje en el JSON.
+            portada = ep.pop('portada_url', None)
+            if portada:
+                ep['imagen'] = request.build_absolute_uri(portada)
 
         return Response({
             "nombre": "Últimos episodios",

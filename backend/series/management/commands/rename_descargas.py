@@ -1,16 +1,15 @@
 from pathlib import Path
 
-from django.conf import settings
 from django.core.management.base import BaseCommand
 
 from series.models import Capitulo
+from series.paths import serie_download_dir
 
 
 class Command(BaseCommand):
     help = 'Renombra archivos descargados al formato Episodio-X.mp4 y actualiza ruta_archivo'
 
     def handle(self, *args, **options):
-        download_dir = Path(settings.DOWNLOAD_DIR)
         cap_con_archivo = Capitulo.objects.filter(ruta_archivo__isnull=False).select_related('serie')
 
         renovados = 0
@@ -24,7 +23,7 @@ class Command(BaseCommand):
                 saltados += 1
                 continue
 
-            new_path = download_dir / cap.serie.slug / cap.nombre_archivo
+            new_path = serie_download_dir(cap.serie.slug, cap.serie.fuente) / cap.nombre_archivo
             if old_path == new_path:
                 saltados += 1
                 continue

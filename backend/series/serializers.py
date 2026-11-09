@@ -1,6 +1,7 @@
 from django.db.models import Max
 from rest_framework import serializers
 from .models import Serie, Capitulo
+from .paths import serie_dir_name
 
 
 class CapituloSerializer(serializers.ModelSerializer):
@@ -13,9 +14,11 @@ class CapituloSerializer(serializers.ModelSerializer):
         fields = ['id', 'numero', 'nombre_archivo', 'archivo_existe', 'url_fuente', 'fecha_publicacion', 'ruta_smb', 'ultimo_segundo']
 
     def get_ruta_smb(self, obj):
-        if not obj.ruta_archivo:
+        if not obj.ruta_archivo_real:
             return None
-        return f"{obj.serie.slug}/{obj.nombre_archivo}"
+        # La carpeta real es `<fuente>-<slug>`: derivarla del slug solo volvia a
+        # introducir la colision de series homonimas de distinta fuente.
+        return f"{serie_dir_name(obj.serie.slug, obj.serie.fuente)}/{obj.nombre_archivo}"
 
 
 class SerieListSerializer(serializers.ModelSerializer):
@@ -84,9 +87,11 @@ class CapituloDetailSerializer(serializers.ModelSerializer):
         ]
 
     def get_ruta_smb(self, obj):
-        if not obj.ruta_archivo:
+        if not obj.ruta_archivo_real:
             return None
-        return f"{obj.serie.slug}/{obj.nombre_archivo}"
+        # La carpeta real es `<fuente>-<slug>`: derivarla del slug solo volvia a
+        # introducir la colision de series homonimas de distinta fuente.
+        return f"{serie_dir_name(obj.serie.slug, obj.serie.fuente)}/{obj.nombre_archivo}"
 
     def get_anterior_id(self, obj):
         cap = Capitulo.objects.filter(serie=obj.serie, numero__lt=obj.numero).order_by('-numero').first()

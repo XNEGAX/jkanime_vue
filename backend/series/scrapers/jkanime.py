@@ -5,15 +5,60 @@ import re
 import json
 import base64
 import logging
+import threading
 
-import cloudscraper
 from bs4 import BeautifulSoup
 
 from .base import BaseScraper
+from .cache import SCRAPE_CACHE, TRENDING_CACHE, shared_scraper_session
 from .resolvers import resolve_video_url
 from . import register_scraper
 
 logger = logging.getLogger(__name__)
+
+# Plantilla del poster de serie en el CDN. La extension `.jpg` es OBLIGATORIA:
+# el CDN no la deduce. Sin ella la URL responde 404 (un HTML de error de nginx,
+# `content-type: text/html`) para todos los slugs, y como el codigo de guardado
+# solo acepta HTTP 200 la serie se queda sin portada o cae al fallback del
+# scraping. Vive aqui y no duplicada en `trending.py` porque eran dos copias
+# escritas a mano y la de `trending.py` perdió la extension: el bug se dejo pasar
+# porque las dos "funcionaban" y solo una compilaba la URL correcta.
+CDN_PORTADA = "https://cdn.jkdesa.com/assets/images/animes/image/{slug}.jpg"
+
+
+def _es_portada_de_la_serie(src: str, slug: str) -> bool:
+    """True si `src` es el poster vertical de `slug` en el CDN.
+
+    Anclado al path exacto del poster a proposito. Un filtro flojo
+    (`slug in src and "/image/" in src`) tambien acepta las capturas de capitulo,
+    porque `animes/video/image/jkvideo_*.jpg` (1280x720) contiene `/image/` y su
+    hash puede coincidir con el slug; y `/image_thumb/` es la familia de la
+    miniatura de capitulo. Aqui el segmento siguiente a `/animes/` tiene que ser
+    exactamente `image`, y en las dos familias de capturas ese segmento es
+    `video`, asi que no pueden pasar ni por accidente.
+
+    Se ignoran query string y fragmento para no depender de que jkanime anada
+    cache-busting a la URL.
+    """
+    ruta = src.split("?", 1)[0].split("#", 1)[0]
+    return ruta.endswith(f"/animes/image/{slug}.jpg")
+
+
+def _es_portada_de_la_serie_aproximada(src: str, slug: str) -> bool:
+    """Como `_es_portada_de_la_serie` pero tolera que el nombre del poster
+    EMPIECE con el slug en vez de ser identico.
+
+    jkanime trunca slugs largos para la URL pero sube el poster con el nombre
+    completo: la serie 450 tiene slug de 220 chars (`...hitotachi-dai`) y su
+    poster es `...hitotachi-daijoubu.jpg`. Con el match exacto la portada nunca
+    se encontraba y `refrescar-portada` devolvia 500. El ancla `/animes/image/`
+    sigue excluyendo las capturas de capitulo (`/animes/video/...`), que es la
+    proteccion que importa; por eso este fallback solo se usa cuando el match
+    exacto no aparece.
+    """
+    ruta = src.split("?", 1)[0].split("#", 1)[0]
+    marca = f"/animes/image/{slug}"
+    return marca in ruta and ruta.endswith(".jpg")
 
 
 class JKanimeScraper(BaseScraper):
@@ -21,6 +66,11 @@ class JKanimeScraper(BaseScraper):
     SOURCE_NAME = "jkanime"
     TIMEOUT = 60
     EPISODES_PER_PAGE = 16
+
+    # jkanime esta detras de un Managed Challenge de Cloudflare: sin la cookie
+    # `cf_clearance` TODA peticion vuelve 403 y todos los metodos caen a su
+    # `except` (lista vacia, sin descargas). Ver scrapers/cf_clearance.py.
+    CF_CLEARANCE = True
 
     SERVER_PRIORITY = [
         "Mediafire", "Mega", "Mp4upload", "Streamtape", "VOE",
@@ -32,6 +82,8 @@ class JKanimeScraper(BaseScraper):
         "Streamtape": "https://streamtape.com/",
         "Mediafire": "https://www.mediafire.com/",
         "VOE": "https://voe.sx/",
+        "Streamwish": "https://flaswish.com/",
+        "Streamhg": "https://flaswish.com/",
     }
 
     USER_AGENT = (
@@ -46,8 +98,15 @@ class JKanimeScraper(BaseScraper):
         'sabado': 'sabado', 'sábado': 'sabado', 'domingo': 'domingo',
     }
 
+    # Sesión compartida a nivel de proceso. Antes se creaba una sesión nueva en
+    # cada llamada a _get_scraper(), y cada sesión nueva tiene que resolver el
+    # desafío de Cloudflare desde cero: la misma URL se midió entre 1.48s y
+    # 49.43s según si la sesión estaba caliente. Ver series/scrapers/cache.py.
+    _session_lock = threading.Lock()
+    _session = None
+
     def _get_scraper(self):
-        return cloudscraper.create_scraper(browser={"custom": self.USER_AGENT})
+        return shared_scraper_session(JKanimeScraper)
 
     # ------------------------------------------------------------------
     #  API BaseScraper
@@ -93,8 +152,23 @@ class JKanimeScraper(BaseScraper):
             logger.error(f"Error obteniendo series de JKanime: {e}")
             return []
 
-    def get_trending(self):
-        """Obtiene los ultimos episodios del trending de la pagina principal."""
+    def get_trending(self, force=False):
+        """Obtiene los ultimos episodios del trending de la pagina principal.
+
+        Va por `TRENDING_CACHE` (30 min) y no por `SCRAPE_CACHE` (24h): el
+        trending es justamente la lista que el usuario quiere ver fresca, y el
+        scrape real se midio en 0.65s, asi que un TTL de 24h no ahorraba trabajo
+        y si congelaba la pantalla. `force=True` lo usa la tarea horaria y el
+        boton manual, que jamas pueden devolver cache. Ver `scrapers/cache.py`.
+        """
+        return TRENDING_CACHE.get_or_set(
+            ("jkanime", "trending"),
+            self._scrape_trending,
+            force=force,
+        )
+
+    def _scrape_trending(self):
+        """Scraping real del trending. Lo llama la cache, nunca directamente."""
         scraper = self._get_scraper()
         try:
             resp = scraper.get(self.BASE_URL, timeout=self.TIMEOUT)
@@ -126,7 +200,19 @@ class JKanimeScraper(BaseScraper):
                         continue
 
                     img = card.find("img", class_="card-img-top")
-                    imagen = img.get("src", "") if img else ""
+                    # La tarjeta del trending expone DOS imagenes: `src` es la
+                    # captura del capitulo (1280x720, `animes/video/image/
+                    # jkvideo_*.jpg`) y el poster vertical de la serie esta en
+                    # `data-animepic` (`animes/image/{slug}.jpg`). Medido en el
+                    # trending real: 71 de 72 tarjetas traen captura en `src` y
+                    # las 72 traen el poster en `data-animepic`. Se lee
+                    # `data-animepic` primero y `src` queda de respaldo para las
+                    # tarjetas que no lo traigan, porque leer `src` guardaba la
+                    # captura como si fuera la portada de la serie.
+                    imagen = (
+                        (img.get("data-animepic") or img.get("src", ""))
+                        if img else ""
+                    )
 
                     h5 = card.find("h5", class_="card-title")
                     if not h5:
@@ -153,11 +239,23 @@ class JKanimeScraper(BaseScraper):
             return []
 
     def get_series_info(self, url: str) -> dict | None:
-        """Obtiene info de una serie desde su URL directa de JKanime."""
+        """Obtiene info de una serie desde su URL directa de JKanime.
+
+        La clave de cache es el slug, no la URL: el request path arma
+        `BASE_URL/<slug>/` (views) y el worker pasa `serie.url` desde la BD
+        (tasks/fuente). Mismo slug, misma clave, un solo scrape.
+        """
         slug = self._extract_slug(url)
         if not slug:
             return None
 
+        return SCRAPE_CACHE.get_or_set(
+            ("jkanime", "series_info", slug),
+            lambda: self._scrape_series_info(slug),
+        )
+
+    def _scrape_series_info(self, slug: str) -> dict | None:
+        """Scraping real de una serie. Lo llama la cache, nunca directamente."""
         scraper = self._get_scraper()
         full_url = f"{self.BASE_URL}/{slug}/"
         try:
@@ -165,16 +263,7 @@ class JKanimeScraper(BaseScraper):
             resp.raise_for_status()
             soup = BeautifulSoup(resp.text, "html.parser")
 
-            nombre = ""
-            h1 = soup.find("h1")
-            if h1:
-                nombre = h1.get_text(strip=True)
-            if not nombre:
-                title = soup.find("title")
-                if title:
-                    nombre = title.get_text(strip=True).split("|")[0].strip()
-            if not nombre:
-                nombre = slug.replace("-", " ").title()
+            nombre = self._extract_nombre_serie(soup, slug)
 
             cover_url = self._get_cover_url(scraper, slug, full_url)
             estado = self._extract_estado(soup)
@@ -295,6 +384,7 @@ class JKanimeScraper(BaseScraper):
                         "server": name,
                         "url": video_url,
                         "size": s.get("size", "Desconocido"),
+                        "resolved": True,
                     })
 
             priority_map = {s: i for i, s in enumerate(self.SERVER_PRIORITY)}
@@ -331,6 +421,41 @@ class JKanimeScraper(BaseScraper):
                 return title
         return ""
 
+    def _extract_nombre_serie(self, soup, slug):
+        """Nombre de la serie desde la pagina de la serie.
+
+        La pagina de serie de jkanime NO trae `<h1>`: el titulo vive en un `<h3>`
+        dentro de `div.anime_info`. Antes se leia `h1` (siempre vacio) y se caia
+        al `<title>`, que en jkanime es `"{nombre} - anime {nombre} online
+        JkAnime"`: el nombre quedaba DUPLICADO y, si superaba los 255 chars del
+        campo, truncado a la mitad (ver serie 450). El `<title>` queda como
+        ultimo recurso, parseado para sacarle el sufijo.
+        """
+        info_div = soup.find("div", class_="anime_info")
+        if info_div:
+            h3 = info_div.find("h3")
+            if h3:
+                nombre = h3.get_text(strip=True)
+                if nombre:
+                    return nombre
+
+        h1 = soup.find("h1")
+        if h1:
+            nombre = h1.get_text(strip=True)
+            if nombre:
+                return nombre
+
+        title = soup.find("title")
+        if title:
+            raw = title.get_text(strip=True)
+            # "Nombre - anime Nombre online JkAnime" -> "Nombre"
+            raw = re.split(r"\s+-\s+anime\s+", raw, maxsplit=1)[0]
+            raw = re.sub(r"\s+online\s+JkAnime\s*$", "", raw, flags=re.IGNORECASE).strip()
+            if raw:
+                return raw
+
+        return slug.replace("-", " ").title()
+
     def _is_pelicula(self, soup):
         tipo_tag = soup.find("li", attrs={"rel": "tipo"})
         if tipo_tag:
@@ -340,24 +465,43 @@ class JKanimeScraper(BaseScraper):
         return False
 
     def _get_cover_url(self, scraper, slug, episode_url):
-        cdn_url = f"https://cdn.jkdesa.com/assets/images/animes/image/{slug}.jpg"
+        cdn_url = CDN_PORTADA.format(slug=slug)
         try:
             head = scraper.head(cdn_url, timeout=10)
             if head.status_code == 200:
                 return cdn_url
         except Exception:
             pass
+        # El CDN no siempre tiene el poster (series viejas, slug renombrado), asi
+        # que queda buscarlo en el HTML. El filtro va anclado al path del poster
+        # por lo que se explica en `_es_portada_de_la_serie`: antes se aceptaba
+        # cualquier `src` con `/image/` y el resultado eran capturas de capitulo.
+        # Se prioriza el match exacto; el aproximado solo se usa si no aparece
+        # ninguno exacto (ver `_es_portada_de_la_serie_aproximada`).
         try:
             resp = scraper.get(episode_url, timeout=self.TIMEOUT)
             resp.raise_for_status()
             soup = BeautifulSoup(resp.text, "html.parser")
+            aproximada = None
             for img in soup.find_all("img"):
                 src = img.get("src", "")
-                if slug in src and ("/image/" in src or "/image_thumb/" in src):
+                if _es_portada_de_la_serie(src, slug):
                     return src
+                if aproximada is None and _es_portada_de_la_serie_aproximada(src, slug):
+                    aproximada = src
+            # `og:image` tambien pasa por el filtro: en la pagina de un EPISODIO es
+            # la miniatura del capitulo (`animes/video/image_thumb/...`, 350x197),
+            # y `get_all_series` scrappea paginas de episodio, no de serie. Sin
+            # esto, una serie sin poster en el CDN se guardaba con esa miniatura.
             meta = soup.find("meta", property="og:image")
             if meta and meta.get("content"):
-                return meta["content"]
+                og = meta["content"]
+                if _es_portada_de_la_serie(og, slug):
+                    return og
+                if aproximada is None and _es_portada_de_la_serie_aproximada(og, slug):
+                    aproximada = og
+            if aproximada:
+                return aproximada
         except Exception:
             pass
         return None

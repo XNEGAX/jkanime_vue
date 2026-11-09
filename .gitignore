@@ -43,6 +43,9 @@ backend/descargas
 backend/db.sqlite3
 backend/media/portadas/
 
+# Cookie cf_clearance + perfil de Chrome dedicado (scrapers/cf_clearance.py)
+backend/.cf_clearance/
+
 # Redis
 dump.rdb
 frontend/dump.rdb

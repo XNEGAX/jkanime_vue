@@ -5,4 +5,10 @@ cloudscraper>=1.2.71
 beautifulsoup4>=4.12.0
 requests>=2.31.0
 Pillow>=10.0.0
+# Chrome real via CDP para resolver el Managed Challenge de Cloudflare en
+# jkanime.net (ver backend/series/scrapers/cf_clearance.py). No requiere
+# `playwright install`: usa el Chrome ya instalado en la maquina.
+playwright>=1.45
+# Extraccion de playlists y videos de YouTube (backend/series/scrapers/youtube.py).
+yt-dlp>=2026.10.26
 

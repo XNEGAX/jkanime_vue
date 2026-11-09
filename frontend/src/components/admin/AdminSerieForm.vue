@@ -55,6 +55,8 @@
               <select v-model="form.fuente" :disabled="guardando">
                 <option value="jkanime">jkanime</option>
                 <option value="latanime">latanime</option>
+                <option value="animeflv">animeflv</option>
+                <option value="youtube">youtube</option>
               </select>
             </div>
             <div class="field field-checkbox">

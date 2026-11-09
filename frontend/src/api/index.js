@@ -1,9 +1,10 @@
 import axios from 'axios'
 import { useConfigStore } from '../stores/config'
 
-const api = axios.create({
-  headers: { 'Content-Type': 'application/json' },
-})
+// Sin Content-Type fijo: axios lo resuelve solo (`application/json` para
+// objetos y `multipart/form-data` con boundary para FormData). Con el header
+// JSON fijo, axios 1.x convierte el FormData a JSON y pierde los archivos.
+const api = axios.create()
 
 api.interceptors.request.use((config) => {
   const configStore = useConfigStore()
@@ -47,6 +48,26 @@ export function verificarSeries() {
 
 export function getVerificarStatus() {
   return api.get('/series/verificar/', {
+    headers: { 'Cache-Control': 'no-cache' },
+  })
+}
+
+export function verificarEstados() {
+  return api.post('/series/verificar-estados/')
+}
+
+export function getVerificarEstadosStatus() {
+  return api.get('/series/verificar-estados/', {
+    headers: { 'Cache-Control': 'no-cache' },
+  })
+}
+
+export function verificarTrending() {
+  return api.post('/series/verificar-trending/')
+}
+
+export function getVerificarTrendingStatus() {
+  return api.get('/series/verificar-trending/', {
     headers: { 'Cache-Control': 'no-cache' },
   })
 }

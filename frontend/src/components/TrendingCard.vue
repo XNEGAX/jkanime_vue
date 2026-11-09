@@ -27,7 +27,7 @@
       class="trending-card-fav"
       :class="{ 'trending-card-fav-active': isFavorite }"
       @click.stop="$emit('toggle-fav')"
-      title="Quitar de favoritos"
+      :title="favTitle"
     >
       &#9829;
     </button>
@@ -41,6 +41,7 @@ defineProps({
   subtitle: { type: String, required: false },
   showFav: { type: Boolean, default: false },
   isFavorite: { type: Boolean, default: false },
+  favTitle: { type: String, default: 'Quitar de favoritos' },
   downloadState: { type: Object, required: false },
 })
 

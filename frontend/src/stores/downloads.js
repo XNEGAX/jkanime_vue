@@ -54,7 +54,12 @@ export const useDownloadStore = defineStore('downloads', () => {
 
         downloads.value.push({
           taskId: t.task_id,
-          capituloId: null,
+          // Keep the chapter link the backend already knows (individual download
+          // tasks carry `capitulo_id`). Without it the chapter cannot be matched
+          // to its entry, so the UI would offer a re-enqueue for a chapter that
+          // is ALREADY downloading — the duplication the backend lock absorbs.
+          // Non-download tasks (verificar) have no chapter and stay null.
+          capituloId: t.capitulo_id ?? null,
           serie: t.serie,
           numero: t.numero,
           state: t.state,
@@ -92,6 +97,15 @@ export const useDownloadStore = defineStore('downloads', () => {
         }
 
         Object.assign(item, data)
+
+        if (data.state === 'NONE' || data.state === 'CANCELLED') {
+          // The backend removed the task (cancelled, or already gone): it will
+          // never report PROGRESS again, so polling it would loop forever.
+          // Stop and drop the entry — this also clears the chapter's
+          // "downloading" marker so the button re-enables.
+          removeDownload(taskId)
+          return
+        }
 
         if (data.state === 'SUCCESS') {
           if (callbacks[taskId]) {

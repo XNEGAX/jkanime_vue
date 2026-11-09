@@ -9,6 +9,11 @@ urlpatterns = [
     path('series/<int:serie_id>/', views.api_serie_detail, name='api_serie_detail'),
     path('series/<int:serie_id>/capitulos/', views.api_capitulos, name='api_capitulos'),
     path('series/verificar/', views.api_verificar_series, name='api_verificar_series'),
+    path('series/verificar-estados/', views.api_verificar_estados, name='api_verificar_estados'),
+    # Antes de los patrones `series/<int:serie_id>/...`: `verificar-trending`
+    # no es un id, pero el orden importa para que ninguna ruta generica se coma
+    # el nombre de la tarea.
+    path('series/verificar-trending/', views.api_verificar_trending, name='api_verificar_trending'),
     path('series/agregar-url/', views.api_agregar_serie_url, name='api_agregar_serie_url'),
     path('series/<int:serie_id>/descargar-todos/', views.api_descargar_todos, name='api_descargar_todos'),
     path('series/<int:serie_id>/refrescar-portada/', views.api_refrescar_portada, name='api_refrescar_portada'),

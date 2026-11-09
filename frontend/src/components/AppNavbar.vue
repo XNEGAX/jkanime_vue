@@ -45,12 +45,12 @@
       <div class="modal-overlay" v-if="showUrlModal" @click.self="closeModal">
         <div class="modal-box">
           <h3>Agregar serie por URL</h3>
-          <p class="modal-desc">Pegá la URL de la serie (jkanime.net o latanime.org)</p>
+          <p class="modal-desc">Pegá la URL de la serie (jkanime.net, latanime.org o animeflv)</p>
           <input
             v-model="urlInput"
             type="text"
             class="modal-input"
-            placeholder="https://jkanime.net/shingeki-no-kyojin/ o https://latanime.org/anime/..."
+            placeholder="https://jkanime.net/shingeki-no-kyojin/ o https://animeflv.one/anime/..."
             @keydown.enter="agregarUrl"
             ref="urlInputEl"
             autofocus

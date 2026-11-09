@@ -45,6 +45,8 @@
           <option value="">Fuente: todas</option>
           <option value="jkanime">jkanime</option>
           <option value="latanime">latanime</option>
+          <option value="animeflv">animeflv</option>
+          <option value="youtube">youtube</option>
         </select>
         <select v-model="filtroFavorito" class="filtro-select" @change="cargarSeries">
           <option value="">Favorito: todos</option>
@@ -203,7 +205,7 @@
       <div class="modal-overlay" v-if="showUrlModal" @click.self="cerrarModalUrl">
         <div class="modal-box">
           <h3>Agregar serie por URL</h3>
-          <p class="modal-desc">Pegá la URL de la serie (jkanime.net o latanime.org). Se crean capítulos y portada automáticamente.</p>
+          <p class="modal-desc">Pegá la URL de la serie (jkanime.net, latanime.org, animeflv o YouTube). Se crean capítulos y portada automáticamente.</p>
           <input
             v-model="urlInput"
             type="text"

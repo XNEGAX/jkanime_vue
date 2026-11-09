@@ -14,12 +14,14 @@ Los servidores de descarga aparecen en dos formas:
 import re
 import base64
 import logging
+import threading
+from urllib.parse import urlsplit
 
-import cloudscraper
 from bs4 import BeautifulSoup
 
 from .base import BaseScraper
-from .resolvers import resolve_video_url
+from .cache import shared_scraper_session
+from .resolvers import resolve_mediafire, resolve_video_url
 from . import register_scraper
 
 logger = logging.getLogger(__name__)
@@ -28,17 +30,24 @@ logger = logging.getLogger(__name__)
 class LatanimeScraper(BaseScraper):
     BASE_URL = "https://latanime.org"
     SOURCE_NAME = "latanime"
+    SERIE_URL_TEMPLATE = "{base}/anime/{slug}"
     TIMEOUT = 60
 
+    # Orden de desempate dentro de cada grupo (resueltos / no resueltos). El
+    # orden real de entrega lo decide el flag `resolved`: los que entregan video
+    # van primero. Dentro de los resueltos, los que SI sirven video real en
+    # latanime (Mp4upload, Doodstream) encabezan; las landings quedan al final.
     SERVER_PRIORITY = [
-        "Mega",           # 1. Mega download (direct-link)
-        "Mega Stream",    # 2. Mega stream (play-video)
-        "Mediafire",      # 3. Mediafire download
-        "Savefiles", "Gofile", "1cloudfile",
-        "Pixeldrain",
-        "Mp4upload", "VOE", "Mixdrop", "Doodstream",
-        "Byse", "Hexload",
-        "Filemoon", "Lulu", "Listeamed",
+        "Mp4upload",      # sirve mp4 directo
+        "Doodstream",     # resuelve a un CDN de video directo
+        "Ok",             # resolve_okru entrega un mp4 directo firmado (okcdn)
+        "Mediafire",      # resolve_mediafire devuelve el host de descarga real
+        "Pixeldrain",     # /api/file/<id> es descarga directa
+        # A veces resuelven; van antes que las landings puras.
+        "VOE", "Mixdrop", "Filemoon", "Lulu", "Listeamed",
+        # Landing/embed sin resolver: van ultimas.
+        "Mega", "Mega Stream",
+        "Savefiles", "Gofile", "1cloudfile", "Byse", "Hexload",
     ]
 
     REFERER_MAP = {
@@ -50,6 +59,40 @@ class LatanimeScraper(BaseScraper):
         "Lulu": "https://luluvid.com/",
         "Mixdrop": "https://mixdrop.co/",
         "Pixeldrain": "https://pixeldrain.com/",
+        "Ok": "https://ok.ru/",
+    }
+
+    # Host del reproductor -> nombre canónico del servidor. Es la fuente
+    # confiable para los players `data-player`: el texto del ancla es un badge
+    # genérico ("ok") repetido en varios hosts, no el nombre del servidor.
+    #
+    # El valor DEBE coincidir exacto con las claves de `resolvers.RESOLVER_MAP`
+    # / `SERVER_PRIORITY` / `DIRECT_LINK_RESOLVERS`: una diferencia de casing
+    # desactiva el resolver en silencio. Ningún valor puede contener "/" ni
+    # fragmentos de path.
+    HOST_SERVER_MAP = {
+        "mp4upload.com": "Mp4upload",
+        "mediafire.com": "Mediafire",
+        "mega.nz": "Mega",
+        "ok.ru": "Ok",
+        "filemoon.sx": "Filemoon",
+        "filemoon.to": "Filemoon",
+        "mixdrop.co": "Mixdrop",
+        "mixdrop.to": "Mixdrop",
+        "doodstream.com": "Doodstream",
+        "dood.to": "Doodstream",
+        "uptobox.com": "Uptobox",
+        "1fichier.com": "1fichier",
+        "fireload.com": "Fireload",
+        "pixeldrain.com": "Pixeldrain",
+        "luluvid.com": "Lulu",
+        "voe.sx": "VOE",
+        "streamtape.com": "Streamtape",
+        "streamwish.to": "Streamwish",
+        "streamwish.com": "Streamwish",
+        "listeamed.net": "Listeamed",
+        "gofile.io": "Gofile",
+        "1cloudfile.com": "1cloudfile",
     }
 
     USER_AGENT = (
@@ -61,8 +104,20 @@ class LatanimeScraper(BaseScraper):
     # Resolvedores específicos de Latanime (para servidores que ya vienen resueltos)
     DIRECT_SERVERS = {"Mediafire", "Mega", "Savefiles", "Gofile", "1cloudfile", "Pixeldrain"}
 
+    # Nombres de `.direct-link` que SI tienen un resolver real y confiable. Cada
+    # otro `.direct-link` se devuelve tal cual y marcado `resolved: False`: su
+    # href es la landing, no un archivo descargable.
+    DIRECT_LINK_RESOLVERS = {
+        "Mediafire": resolve_mediafire,
+    }
+
+    # Sesión compartida a nivel de proceso, mismo motivo que en JKanimeScraper:
+    # una sesión nueva por llamada vuelve a pagar el desafío de Cloudflare.
+    _session_lock = threading.Lock()
+    _session = None
+
     def _get_scraper(self):
-        return cloudscraper.create_scraper(browser={"custom": self.USER_AGENT})
+        return shared_scraper_session(LatanimeScraper)
 
     def _extract_slug(self, url: str) -> str:
         """Extrae el slug de una URL de Latanime."""
@@ -278,23 +333,38 @@ class LatanimeScraper(BaseScraper):
 
                 # Nombre del servidor desde el texto del span
                 name_span = a.find("span")
-                server_name = name_span.get_text(strip=True) if name_span else "Desconocido"
+                label = name_span.get_text(strip=True) if name_span else ""
 
                 # Sanitizar nombre
-                server_name = server_name.strip()
-                if not server_name:
-                    server_name = "Desconocido"
+                label = label.strip()
+                if not label:
+                    label = "Desconocido"
 
                 # Normalizar nombre (Cloud -> 1cloudfile, etc.)
-                server_name = self._normalize_server_name(server_name)
+                label = self._normalize_server_name(label)
+
+                # El host es la fuente AUTORITATIVA cuando lo reconocemos: la
+                # etiqueta de la propia pagina no es confiable (el MISMO link de
+                # 1fichier aparece como "1fichier" en un episodio y como "Ok" en
+                # otro). La etiqueta queda solo como respaldo para hosts que no
+                # estan en HOST_SERVER_MAP.
+                server_name = self._server_name_from_url(href)
+                if not server_name:
+                    server_name = label
+
+                # Un nombre con path ("To/k9iahzd6r0ba") es basura del badge,
+                # nunca debe llegar al caller ni a la DB.
+                if "/" in server_name:
+                    server_name = "Desconocido"
 
                 # Transformar URLs de servidores directos con API
-                url = self._resolve_direct_url(server_name, href)
+                url, resolved = self._resolve_direct_url(server_name, href)
 
                 results.append({
                     "server": server_name,
                     "url": url,
                     "size": "Desconocido",
+                    "resolved": resolved,
                 })
 
             # --- 2. Players online (data-player en base64) ---
@@ -311,11 +381,21 @@ class LatanimeScraper(BaseScraper):
                     continue
                 seen_urls.add(decoded_url)
 
-                server_name = li.get_text(strip=True) or "Desconocido"
-                server_name = server_name.strip().capitalize()
+                # El texto del <a> es un badge genérico ("ok") que NO identifica
+                # al servidor: el host del data-player decodificado sí. El label
+                # queda solo como respaldo para hosts desconocidos.
+                server_name = self._server_name_from_url(decoded_url)
+                if not server_name:
+                    server_name = li.get_text(strip=True) or "Desconocido"
+                    server_name = server_name.strip().capitalize()
 
-                # Mapear nombres a los estándar
-                server_name = self._normalize_server_name(server_name)
+                    # Mapear nombres a los estándar
+                    server_name = self._normalize_server_name(server_name)
+
+                    # Un nombre con path ("To/k9iahzd6r0ba") es basura del
+                    # badge, nunca debe llegar al caller ni a la DB.
+                    if "/" in server_name:
+                        server_name = "Desconocido"
 
                 # Distinguir stream de descarga directa para Mega
                 if server_name == "Mega":
@@ -328,19 +408,26 @@ class LatanimeScraper(BaseScraper):
                         "server": server_name,
                         "url": video_url,
                         "size": "Desconocido",
+                        "resolved": True,
                     })
                 else:
-                    # Si no se pudo resolver, igual agregar la URL decodificada
-                    # (algunos servers como Savefiles, Gofile ya vienen como enlace directo)
+                    # No se pudo resolver: se devuelve la URL cruda (para que los
+                    # callers sigan funcionando) pero marcada como NO resuelta,
+                    # nunca como si fuera un link de descarga listo.
                     results.append({
                         "server": server_name,
                         "url": decoded_url,
                         "size": "Desconocido",
+                        "resolved": False,
                     })
 
-            # --- 3. Ordenar por prioridad ---
+            # --- 3. Ordenar: resueltos primero, landings despues ---
+            # Dentro de cada grupo desempata SERVER_PRIORITY.
             priority_map = {s: i for i, s in enumerate(self.SERVER_PRIORITY)}
-            results.sort(key=lambda x: priority_map.get(x["server"], len(self.SERVER_PRIORITY)))
+            results.sort(key=lambda x: (
+                not x.get("resolved", False),
+                priority_map.get(x["server"], len(self.SERVER_PRIORITY)),
+            ))
 
             return results
 
@@ -348,14 +435,52 @@ class LatanimeScraper(BaseScraper):
             logger.error(f"Error obteniendo URLs de descarga para {episode_url}: {e}")
             return []
 
-    def _resolve_direct_url(self, server_name: str, url: str) -> str:
-        """Transforma URLs de descarga directa a su endpoint de descarga real."""
+    def _resolve_direct_url(self, server_name: str, url: str) -> tuple[str, bool]:
+        """Resuelve un enlace `.direct-link` a un link de media real si se puede.
+
+        Retorna `(url, resolved)`. `resolved` es True SOLO cuando un resolver
+        real devolvio un link de media directo. Si no, se devuelve la URL de
+        aterrizaje tal cual y marcada como NO resuelta, para que el caller la
+        intente ultima en vez de tratarla como si fuera descargable.
+
+        - Pixeldrain: se reescribe a su endpoint `/api/file/<id>` (bytes directos).
+        - Mediafire: se resuelve via `resolve_mediafire` (host de descarga real).
+        - Mega / Savefiles / Gofile / 1cloudfile / ...: sin resolver confiable,
+          se declaran no soportados (ver `resolvers.UNSUPPORTED_SERVERS`).
+        """
         # Pixeldrain: /u/<ID> -> /api/file/<ID>
         if server_name == "Pixeldrain":
             match = re.search(r'pixeldrain\.com/u/([a-zA-Z0-9]+)', url)
             if match:
-                return f"https://pixeldrain.com/api/file/{match.group(1)}"
-        return url
+                return f"https://pixeldrain.com/api/file/{match.group(1)}", True
+
+        resolver = self.DIRECT_LINK_RESOLVERS.get(server_name)
+        if resolver:
+            resolved_url = resolver(self._get_scraper(), url)
+            if resolved_url:
+                return resolved_url, True
+
+        return url, False
+
+    def _server_name_from_url(self, url: str) -> str:
+        """Deduce el nombre canónico del servidor a partir del host de `url`.
+
+        Devuelve "" cuando el host no está en `HOST_SERVER_MAP`, para que el
+        caller decida el respaldo. El match es por sufijo de host (mismo dominio
+        o subdominio), nunca por subcadena: así `www.mp4upload.com` cuenta como
+        Mp4upload pero `mp4upload.com.evil.tld` no.
+        """
+        try:
+            host = (urlsplit(url).hostname or "").lower().rstrip(".")
+        except ValueError:
+            return ""
+        if not host:
+            return ""
+        # Claves más largas primero: el dominio más específico gana.
+        for domain in sorted(self.HOST_SERVER_MAP, key=len, reverse=True):
+            if host == domain or host.endswith("." + domain):
+                return self.HOST_SERVER_MAP[domain]
+        return ""
 
     def _normalize_server_name(self, name: str) -> str:
         """Normaliza nombres de servidores a los estándar."""

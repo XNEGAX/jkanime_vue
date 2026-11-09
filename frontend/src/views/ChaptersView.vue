@@ -9,7 +9,7 @@
           class="fav-btn-inline"
           :class="{ active: isFav }"
           @click="toggleFav"
-          :title="isFav ? 'Quitar de favoritos' : 'Agregar a favoritos'"
+          :title="isFav ? 'Quitar de favoritos (elimina la serie y sus archivos)' : 'Agregar a favoritos'"
         >
           &#9829;
         </button>
@@ -80,16 +80,26 @@
       :capituloId="playerCapituloId"
       @close="playerCapituloId = null"
     />
+
+    <AdminConfirmModal
+      v-if="confirmModal"
+      tipo="serie"
+      :item="confirmModal"
+      :loading="eliminando"
+      @confirm="confirmarEliminar"
+      @cancel="confirmModal = null"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getSerieDetail, getCapitulos, descargarCapitulo, descargarTodos as apiDescargarTodos, verificarCapitulo, repararCapitulo as apiReparar, refrescarPortada as apiRefrescarPortada } from '../api'
+import { getSerieDetail, getCapitulos, descargarCapitulo, descargarTodos as apiDescargarTodos, verificarCapitulo, repararCapitulo as apiReparar, refrescarPortada as apiRefrescarPortada, eliminarSerieAdmin } from '../api'
 import { useDownloadStore } from '../stores/downloads'
 import { useFavoritesStore } from '../stores/favorites'
 import VideoPlayerModal from '../components/VideoPlayerModal.vue'
+import AdminConfirmModal from '../components/admin/AdminConfirmModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -108,6 +118,15 @@ const mensajeTipo = ref('ok')
 const descargandoTodos = ref(false)
 const descargandoPortada = ref(false)
 const playerCapituloId = ref(null)
+
+// --- Eliminacion al quitar de favoritos ---
+
+const confirmModal = ref(null)
+const eliminando = ref(false)
+
+// Debe coincidir con TAB_KEY de FavoritesView: es la clave que esa vista lee
+// en su onMounted para decidir que tab abrir.
+const TAB_FAV = 'animewing-fav-tab'
 
 // Estado de validacion de archivos (cap.id -> { verificando, corrupto, mensaje })
 const validandoArchivos = reactive(new Map())
@@ -267,9 +286,36 @@ function formatSegundos(seg) {
 
 async function toggleFav() {
   if (!serie.value) return
+  // Si ya es favorita, "quitar de favoritos" borra la serie entera. Pide
+  // confirmacion antes; si todavia no es favorita, la agrega como siempre.
+  if (isFav.value) {
+    confirmModal.value = serie.value
+    return
+  }
   const result = await favStore.toggle(serie.value.id)
   if (result !== null) {
     serie.value.favorito = result
+  }
+}
+
+async function confirmarEliminar() {
+  if (eliminando.value || !confirmModal.value) return
+  const { id } = confirmModal.value
+  eliminando.value = true
+  try {
+    await eliminarSerieAdmin(id)
+    favStore.setFavorito(id, false)
+    confirmModal.value = null
+    // La serie ya no existe, asi que no queda nada que ver en esta pagina.
+    // FavoritesView lee esta misma clave al montar y abre en "En emision".
+    sessionStorage.setItem(TAB_FAV, 'en_emision')
+    router.push({ name: 'favorites' })
+  } catch (e) {
+    confirmModal.value = null
+    mensaje.value = 'Error al eliminar: ' + (e.response?.data?.error || e.message)
+    mensajeTipo.value = 'error'
+  } finally {
+    eliminando.value = false
   }
 }
 
@@ -304,6 +350,12 @@ async function cargarSerie() {
       getCapitulos(id),
     ])
     serie.value = serieRes.data
+    // Sincronizar el store de favoritos con el estado real de la BD. Sin esto,
+    // entrar directo a /serie/:id (o recargar) deja el Set del store vacio: el
+    // corazon se pinta como "no favorito" aunque la serie SI lo sea, y como el
+    // endpoint de toggle es ciego, el click la saca de favoritos en vez de
+    // agregarla. SeriesView y FavoritesView ya hacen este sync; faltaba aca.
+    favStore.setFavorito(serie.value.id, serie.value.favorito)
     capitulos.value = capsRes.data.capitulos.sort((a, b) => b.numero - a.numero)
     totalJk.value = capsRes.data.total_fuente || capsRes.data.total_jk || 0
     nuevosEncontrados.value = capsRes.data.nuevos_encontrados
