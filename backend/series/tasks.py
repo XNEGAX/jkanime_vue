@@ -13,6 +13,7 @@ from pathlib import Path
 
 import cloudscraper
 import requests as _requests
+import urllib3
 from django.core.files.base import ContentFile
 from django.utils.dateparse import parse_datetime
 from PIL import Image as PILImage
@@ -29,6 +30,7 @@ from .ffmpeg_utils import find_ffmpeg
 logger = logging.getLogger(__name__)
 
 DOWNLOAD_TIMEOUT = 1200
+CONNECT_TIMEOUT = 60
 CHUNK_SIZE = 65536
 PROGRESS_INTERVAL = 512 * 1024
 
@@ -316,10 +318,16 @@ def _stream_from_server(
 
     session = cloudscraper.create_scraper()
     try:
+        # El connect-timeout tambien queda como timeout del socket para la
+        # primera lectura, y Mp4upload tarda 7-30s en mandar el primer byte
+        # (Vidhide y compania son igual de lentos para arrancar). Con 10s el
+        # `read_timeout` efectivo era 10s y el capitulo fallaba siempre con
+        # "Read timed out" a los pocos segundos. Por eso el connect va aparte,
+        # holgado, y la lectura conserva DOWNLOAD_TIMEOUT.
         resp = session.get(
             server_info['url'],
             stream=True,
-            timeout=(10, DOWNLOAD_TIMEOUT),
+            timeout=urllib3.util.Timeout(connect=CONNECT_TIMEOUT, read=DOWNLOAD_TIMEOUT),
             headers=headers,
         )
         resp.raise_for_status()
@@ -375,9 +383,13 @@ def _stream_from_server(
             _limpiar_part(filepath)
             resp.close()
             raise
-        except Exception:
+        except Exception as e:
             _limpiar_part(filepath)
             resp.close()
+            logger.info(
+                f"Descarga desde {server_info.get('server')} interrumpida tras "
+                f"{descargado / 1048576:.1f} MB: {type(e).__name__}: {e}"
+            )
             return False, 0
 
         resp.close()
