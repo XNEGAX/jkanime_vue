@@ -149,6 +149,24 @@ class Capitulo(models.Model):
     def nombre_archivo(self):
         return f"Episodio-{self.numero}.mp4"
 
+    @property
+    def version_archivo(self):
+        """Version del archivo para cache-busting de la URL de video.
+
+        Se deriva de `mtime` + tamano: si el episodio se vuelve a descargar, la
+        version cambia y el navegador pide una URL nueva en lugar de reusar
+        bytes cacheados de la descarga anterior (que puede haber quedado
+        incompleta). Devuelve None si no hay archivo en disco.
+        """
+        ruta = self.ruta_archivo_real
+        if not ruta:
+            return None
+        try:
+            st = os.stat(ruta)
+        except OSError:
+            return None
+        return f"{int(st.st_mtime)}-{st.st_size}"
+
 
 class ServerStat(models.Model):
     """Learned reliability of a download server for a given source.

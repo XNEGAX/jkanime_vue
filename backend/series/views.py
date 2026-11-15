@@ -905,7 +905,13 @@ def api_servir_video(request, capitulo_id):
     common_headers = {
         'Accept-Ranges': 'bytes',
         'ETag': etag,
-        'Cache-Control': 'public, max-age=86400',
+        # Un episodio puede re-descargarse sobre la misma ruta, asi que el
+        # contenido de esta URL es mutable: cachearlo un dia hacia que el
+        # navegador siguiera sirviendo una descarga vieja/incompleta. La
+        # frescura se garantiza con ETag/Last-Modified y, en el frontend, con
+        # el parametro `?v=<version_archivo>`.
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
         'Last-Modified': http_date(file_stat.st_mtime),
         'Content-Disposition': f'inline; filename="{capitulo.nombre_archivo}"',
     }

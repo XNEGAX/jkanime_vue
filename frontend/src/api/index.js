@@ -112,12 +112,15 @@ export function refrescarPortada(serieId) {
   return api.post(`/series/${serieId}/refrescar-portada/`)
 }
 
-export function getVideoUrl(capituloId) {
+export function getVideoUrl(capituloId, version) {
   const configStore = useConfigStore()
-  if (configStore.baseUrl) {
-    return `${configStore.baseUrl}/api/video/${capituloId}/`
-  }
-  return `/api/video/${capituloId}/`
+  const base = configStore.baseUrl
+    ? `${configStore.baseUrl}/api/video/${capituloId}/`
+    : `/api/video/${capituloId}/`
+  // `version` sale de `version_archivo` (mtime + tamano del archivo): cuando el
+  // episodio se re-descarga cambia, asi el navegador no reusa bytes cacheados
+  // de una descarga anterior incompleta.
+  return version ? `${base}?v=${encodeURIComponent(version)}` : base
 }
 
 export function getVideoBeaconUrl(capituloId) {

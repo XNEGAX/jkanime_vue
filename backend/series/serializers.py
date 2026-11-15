@@ -7,11 +7,12 @@ from .paths import serie_dir_name
 class CapituloSerializer(serializers.ModelSerializer):
     archivo_existe = serializers.BooleanField(read_only=True)
     nombre_archivo = serializers.CharField(read_only=True)
+    version_archivo = serializers.CharField(read_only=True, allow_null=True)
     ruta_smb = serializers.SerializerMethodField()
 
     class Meta:
         model = Capitulo
-        fields = ['id', 'numero', 'nombre_archivo', 'archivo_existe', 'url_fuente', 'fecha_publicacion', 'ruta_smb', 'ultimo_segundo']
+        fields = ['id', 'numero', 'nombre_archivo', 'archivo_existe', 'version_archivo', 'url_fuente', 'fecha_publicacion', 'ruta_smb', 'ultimo_segundo']
 
     def get_ruta_smb(self, obj):
         if not obj.ruta_archivo_real:
@@ -74,6 +75,7 @@ class CapituloDetailSerializer(serializers.ModelSerializer):
     serie_id = serializers.IntegerField(source='serie.id', read_only=True)
     archivo_existe = serializers.BooleanField(read_only=True)
     nombre_archivo = serializers.CharField(read_only=True)
+    version_archivo = serializers.CharField(read_only=True, allow_null=True)
     ruta_smb = serializers.SerializerMethodField()
     anterior_id = serializers.SerializerMethodField()
     siguiente_id = serializers.SerializerMethodField()
@@ -81,7 +83,7 @@ class CapituloDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Capitulo
         fields = [
-            'id', 'numero', 'nombre_archivo', 'archivo_existe', 'fecha_publicacion',
+            'id', 'numero', 'nombre_archivo', 'archivo_existe', 'version_archivo', 'fecha_publicacion',
             'url_fuente', 'serie_id', 'serie_nombre', 'ruta_smb',
             'anterior_id', 'siguiente_id', 'ultimo_segundo',
         ]

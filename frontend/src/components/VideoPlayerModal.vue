@@ -105,7 +105,7 @@ const store = useDownloadStore()
 
 const videoUrl = computed(() => {
   if (!capitulo.value) return ''
-  return getVideoUrl(capitulo.value.id)
+  return getVideoUrl(capitulo.value.id, capitulo.value.version_archivo)
 })
 
 function formatoSegundos(seg) {
