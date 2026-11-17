@@ -643,12 +643,6 @@ function quitarFavorito(serie, tabKey) {
   confirmModal.value = { serie, tabKey }
 }
 
-// Tras quitar de favoritos, el usuario queda en la ruta "En emisión". El
-// watcher de activeTab se encarga de cargar los datos y arrancar el chequeo.
-function irAEnEmision() {
-  router.push({ name: 'en-emision' })
-}
-
 async function confirmarEliminar() {
   if (eliminando.value || !confirmModal.value) return
   const { serie, tabKey } = confirmModal.value
@@ -667,7 +661,8 @@ async function confirmarEliminar() {
     favStore.setFavorito(serie.id, false)
     confirmModal.value = null
     setMensaje('ok', `"${serie.nombre}" eliminada correctamente`)
-    await irAEnEmision()
+    // Se actualiza el cache del tab actual (arriba) y se permanece en la misma
+    // ruta: sacar una serie de favoritos no debe sacar al usuario de la vista.
   } catch (e) {
     setMensaje('error', 'Error al eliminar: ' + (e.response?.data?.error || e.message))
   } finally {
