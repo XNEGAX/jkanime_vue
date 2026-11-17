@@ -24,24 +24,24 @@
     </div>
 
     <nav class="tabs-nav">
-      <button
+      <router-link
+        :to="{ name: 'favorites' }"
         :class="['tab-btn', { active: activeTab === 'ultimos' }]"
-        @click="switchTab('ultimos')"
       >
         Últimos episodios
-      </button>
-      <button
+      </router-link>
+      <router-link
+        :to="{ name: 'en-emision' }"
         :class="['tab-btn', { active: activeTab === 'en_emision' }]"
-        @click="switchTab('en_emision')"
       >
         En emisión
-      </button>
-      <button
+      </router-link>
+      <router-link
+        :to="{ name: 'concluidos' }"
         :class="['tab-btn', { active: activeTab === 'concluido' }]"
-        @click="switchTab('concluido')"
       >
         Concluidos
-      </button>
+      </router-link>
     </nav>
 
     <!-- Tab 1: Últimos episodios -->
@@ -209,7 +209,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router'
 import { getUltimosEpisodios, getFavoritosByEstado, verificarCapitulo, descargarCapitulo, eliminarSerieAdmin, verificarEstados, getVerificarEstadosStatus, verificarTrending, getVerificarTrendingStatus } from '../api'
 import { useFavoritesStore } from '../stores/favorites'
@@ -238,19 +238,18 @@ const route = useRoute()
 const favStore = useFavoritesStore()
 const dlStore = useDownloadStore()
 
-const activeTab = ref('ultimos')
+// El tab activo lo define la ruta (meta.tab), no un estado local: así cada
+// pestaña tiene URL propia y back/forward funcionan sin sessionStorage.
+const activeTab = computed(() => route.meta.tab || 'ultimos')
 const searchQuery = ref('')
 
-const VALID_TABS = ['ultimos', 'en_emision', 'concluido']
 const SCROLL_KEY = 'animewing-nav-scroll'
-const TAB_KEY = 'animewing-fav-tab'
 
 onBeforeRouteLeave(() => {
-  sessionStorage.setItem(TAB_KEY, activeTab.value)
   sessionStorage.setItem(SCROLL_KEY, JSON.stringify({
     top: window.scrollY,
     left: window.scrollX,
-    path: '/',
+    path: route.path,
   }))
 })
 
@@ -546,22 +545,7 @@ onUnmounted(() => {
   }
 })
 
-function switchTab(tab) {
-  activeTab.value = tab
-  searchQuery.value = ''
-  if (!loadedTabs.value[tab]) {
-    loadTabData(tab)
-  }
-  if (tab === 'en_emision') {
-    iniciarVerificacionEstados()
-  }
-}
-
 onMounted(() => {
-  const savedTab = sessionStorage.getItem(TAB_KEY)
-  if (savedTab && VALID_TABS.includes(savedTab)) {
-    activeTab.value = savedTab
-  }
   loadTabData(activeTab.value)
 
   if (activeTab.value === 'en_emision') {
@@ -573,17 +557,18 @@ onMounted(() => {
   // chequeo es best-effort: si no hay pestana abierta, no hay chequeo (el boton
   // manual cubre el caso).
   trendingIntervalTimer = setInterval(() => iniciarVerificacionTrending(), TRENDING_INTERVALO_MS)
+})
 
-  const savedScroll = sessionStorage.getItem(SCROLL_KEY)
-  if (savedScroll) {
-    try {
-      const { top } = JSON.parse(savedScroll)
-      nextTick(() => {
-        window.scrollTo({ top, behavior: 'auto' })
-      })
-    } catch {
-      // ignore invalid JSON
-    }
+// Con keep-alive el componente se reutiliza entre las tres rutas, asi que
+// onMounted corre una sola vez. Este watcher hace lo que hacia switchTab: carga
+// la pestaña recien abierta y arranca su chequeo en background cuando aplica.
+watch(activeTab, (tab) => {
+  searchQuery.value = ''
+  if (!loadedTabs.value[tab]) {
+    loadTabData(tab)
+  }
+  if (tab === 'en_emision') {
+    iniciarVerificacionEstados()
   }
 })
 
@@ -658,19 +643,10 @@ function quitarFavorito(serie, tabKey) {
   confirmModal.value = { serie, tabKey }
 }
 
-// Tras quitar de favoritos, el usuario queda en la url raiz con el tab
-// "En emisión" activo. El tab se persiste en sessionStorage, asi que se
-// escribe antes de navegar para que un remount no lo revierta.
-async function irAEnEmision() {
-  sessionStorage.setItem(TAB_KEY, 'en_emision')
-  activeTab.value = 'en_emision'
-  searchQuery.value = ''
-  if (!loadedTabs.value.en_emision) {
-    await loadTabData('en_emision')
-  }
-  if (route.path !== '/') {
-    router.push({ name: 'favorites' })
-  }
+// Tras quitar de favoritos, el usuario queda en la ruta "En emisión". El
+// watcher de activeTab se encarga de cargar los datos y arrancar el chequeo.
+function irAEnEmision() {
+  router.push({ name: 'en-emision' })
 }
 
 async function confirmarEliminar() {
@@ -705,10 +681,6 @@ function downloadStatus(capituloId) {
   if (!capituloId) return null
   return dlStore.downloads.find(d => d.capituloId === capituloId && (d.state === 'PROGRESS' || d.state === 'PENDING')) || null
 }
-
-watch(activeTab, () => {
-  searchQuery.value = ''
-})
 </script>
 
 <style scoped>
@@ -832,6 +804,8 @@ watch(activeTab, () => {
   border-bottom: 3px solid transparent;
   transition: all 0.2s;
   margin-bottom: -2px;
+  display: inline-block;
+  text-decoration: none;
 }
 
 .tab-btn:focus-visible {

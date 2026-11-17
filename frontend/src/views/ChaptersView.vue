@@ -124,10 +124,6 @@ const playerCapituloId = ref(null)
 const confirmModal = ref(null)
 const eliminando = ref(false)
 
-// Debe coincidir con TAB_KEY de FavoritesView: es la clave que esa vista lee
-// en su onMounted para decidir que tab abrir.
-const TAB_FAV = 'animewing-fav-tab'
-
 // Estado de validacion de archivos (cap.id -> { verificando, corrupto, mensaje })
 const validandoArchivos = reactive(new Map())
 const corruptos = reactive(new Map())
@@ -307,9 +303,8 @@ async function confirmarEliminar() {
     favStore.setFavorito(id, false)
     confirmModal.value = null
     // La serie ya no existe, asi que no queda nada que ver en esta pagina.
-    // FavoritesView lee esta misma clave al montar y abre en "En emision".
-    sessionStorage.setItem(TAB_FAV, 'en_emision')
-    router.push({ name: 'favorites' })
+    // La ruta "En emisión" es la fuente de verdad del tab activo en el home.
+    router.push({ name: 'en-emision' })
   } catch (e) {
     confirmModal.value = null
     mensaje.value = 'Error al eliminar: ' + (e.response?.data?.error || e.message)
